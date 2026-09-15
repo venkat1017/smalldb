@@ -1,0 +1,4829 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><title>MiniSQLite Part 9 — Secondary Indexes and Planning</title><style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb;--purple:#6d4aff;--purple2:#f1edff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em}h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em}h3{font-size:1.28rem;margin:36px 0 12px}h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:840px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}.purplebox{background:var(--purple2);border-color:var(--purple)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0;white-space:pre-wrap}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:22px 0}.flowbox{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;background:#fbfcfe}.flowarrow{font-size:1.4rem;color:#64748b}.muted{color:var(--muted)}
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:22px 0}.pipe{border:1px solid var(--line);background:#fbfcfe;border-radius:10px;padding:14px;text-align:center}.pipe b{display:block;color:var(--blue)}
+.stack{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:22px 0}.stack div{padding:13px 17px;border-bottom:1px solid var(--line)}.stack div:last-child{border-bottom:0}.stack b{color:var(--blue)}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}.flow,.pipeline{grid-template-columns:1fr}.flowarrow{transform:rotate(90deg)}h1{font-size:2.15rem}}
+</style><link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-09.html" rel="canonical"/><meta content="Add persistent secondary indexes and a planner that chooses rowid lookup, index lookup, or full scan." name="description"/></head><body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 9 of 10</span></div><div class="series-links"><a href="part-08.html">← Part 8</a><a href="index.html">Series home</a><a href="part-10.html">Part 10 →</a></div></nav><article><div class="kicker">MiniSQLite • Part 9</div><h1>Secondary Indexes and Planning</h1>
+<p class="subtitle">Part 8 made multi-page changes recoverable. Now we attack a performance problem: <code>WHERE age = 30</code> still scans the table because our only search tree is keyed by <code>rowid</code>. In Part 9 we build persistent secondary indexes, handle duplicate values with rowid bucket chains, maintain indexes transactionally, and add a small planner that chooses between rowid lookup, secondary-index lookup, and full scan.</p>
+<div class="box teacher"><strong>How to use this chapter</strong><p>Start from the finished Part 8 project. Type the changes in order. Do not skip the “before index” <code>.explain</code> checkpoint—the entire lesson depends on seeing the same SQL statement acquire a different physical plan after metadata changes. The complete program is intentionally withheld until Section 34.</p></div>
+<div class="toc"><strong>Table of contents</strong><ol><li><a href="#s1">1. Project setup: preserve Part 8</a></li><li><a href="#s2">2. Reproduce the pain: equality predicates still scan</a></li><li><a href="#s3">3. Primary index vs secondary index</a></li><li><a href="#s4">4. The first complication: secondary keys are not unique</a></li><li><a href="#s5">5. Our Part 9 secondary-index design</a></li><li><a href="#s6">6. Hash collisions mean an index hit is a candidate, not proof</a></li><li><a href="#s7">7. Give the new structures real page types</a></li><li><a href="#s8">8. Persist index definitions in a separate catalog</a></li><li><a href="#s9">9. Extend page 0 without breaking Part 8 files</a></li><li><a href="#s10">10. Design the duplicate bucket page</a></li><li><a href="#s11">11. A typed hash must include the type</a></li><li><a href="#s12">12. Teach CREATE INDEX to the lexer and parser</a></li><li><a href="#s13">13. Resolve names before building anything</a></li><li><a href="#s14">14. Building an index means scanning existing rows once</a></li><li><a href="#s15">15. Insert one duplicate value into a bucket</a></li><li><a href="#s16">16. Why DELETE leaves a zero in the bucket</a></li><li><a href="#s17">17. INSERT now updates several persistent structures</a></li><li><a href="#s18">18. The planner is intentionally tiny</a></li><li><a href="#s19">19. Binding the predicate gives the planner a column number</a></li><li><a href="#s20">20. Build a real incremental SecondaryIndexCursor</a></li><li><a href="#s21">21. Put a FilterCursor above the index lookup</a></li><li><a href="#s22">22. Checkpoint: watch the plan change without changing the query</a></li><li><a href="#s23">23. Duplicates are the real test, not a unique demo</a></li><li><a href="#s24">24. Indexes work for INT, TEXT, and BOOL equality</a></li><li><a href="#s25">25. Make the index visible with debugging commands</a></li><li><a href="#s26">26. Persistence test: the planner should remember after restart</a></li><li><a href="#s27">27. Rollback test: table and index must move together</a></li><li><a href="#s28">28. Crash test: force uncommitted index pages onto disk</a></li><li><a href="#s29">29. DELETE through an indexed predicate uses the same planner</a></li><li><a href="#s30">30. Why writes become more expensive</a></li><li><a href="#s31">31. This is a rule-based planner, not a cost-based optimizer</a></li><li><a href="#s32">32. What we intentionally do not implement yet</a></li><li><a href="#s33">33. Exercises: make the planner and index model stick</a></li><li><a href="#s34">34. Complete program — only now assemble all files</a></li><li><a href="#s35">35. Build and run the finished Part 9 project</a></li><li><a href="#s36">36. What you should understand before leaving Part 9</a></li></ol></div>
+<div class="box insight"><strong>The Part 9 promise</strong><p>By the end, you will create an index with SQL, restart the process, and watch the planner continue using a persistent secondary access path. Duplicate values will return all matching rows; INSERT and DELETE will maintain the index inside the Part 8 transaction protocol; and a forced crash will recover table and index pages to the same committed state.</p></div><h2 id="s1">1. Project setup: preserve Part 8</h2>
+<p>Part 8 gave us transactions, rollback, crash recovery, page checksums, persistent tables, a primary rowid B+tree, SQL parsing, and a cursor-based executor. Part 9 should not replace any of that. We are adding another access path to the same rows.</p>
+<h3>Step 0A — copy the project</h3><pre><code>cp -R minisqlite-part8 minisqlite-part9
+cd minisqlite-part9
+rm -f minidb *.db *-journal</code></pre>
+<p>On PowerShell:</p><pre><code>Copy-Item -Recurse minisqlite-part8 minisqlite-part9
+Set-Location minisqlite-part9
+Remove-Item minidb, *.db, *-journal -ErrorAction SilentlyContinue</code></pre>
+<h3>Step 0B — add the two new implementation files</h3><pre><code>touch index.go secondary_cursor.go
+gofmt -w *.go
+go build -o minidb .</code></pre>
+<div class="box teacher"><strong>Keep the Part 8 mental model</strong><p>A secondary index is not a new table engine. Rows still live in data pages. The rowid B+tree still tells us where a row physically lives. The new index is an additional persistent structure that helps us discover a small set of rowids without walking every row in the table.</p></div>
+<h2 id="s2">2. Reproduce the pain: equality predicates still scan</h2>
+<p>Part 7 made this query executable:</p><pre><code>SELECT rowid, name FROM users WHERE age = 30;</code></pre>
+<p>But look at the plan before we add a secondary index:</p><pre><code>.explain SELECT rowid, name FROM users WHERE age = 30;
+
+Project(rowid, name)
+  -&gt; Filter(age = 30)
+  -&gt; TableScan(table=users)</code></pre>
+<p>The executor understands the predicate. The problem is physical access. The only persistent search tree we have is keyed by <code>rowid</code>. If the question is “which rows have age 30?”, that tree cannot answer it.</p>
+<div class="math">N rows in the table → up to N decoded rows examined for age = 30</div>
+<p>On 20 rows, that is fine. On 20 million rows, it is the difference between an interactive query and a painful one. Part 9 is driven by one question: <strong>can we pay extra work when writing so we can avoid most of the work when reading?</strong></p>
+<h2 id="s3">3. Primary index vs secondary index</h2>
+<div class="grid"><div class="card"><h4>Primary rowid index</h4><p>Key: <code>rowid</code></p><p>Value: physical <code>(page, slot)</code></p><p>One entry per row.</p></div><div class="card"><h4>Secondary age index</h4><p>Key: value derived from <code>age</code></p><p>Value: one or more rowids</p><p>Many rows may share the same key.</p></div></div>
+<p>For a row such as:</p><pre><code>rowid=17 name="alice" age=30</code></pre>
+<p>the two access paths conceptually look like:</p><pre><code>primary rowid tree
+17  -&gt; (data page 9, slot 4)
+
+secondary age index
+30  -&gt; [3, 17, 42, 91, ...]</code></pre>
+<p>The secondary index deliberately points to <em>rowids</em>, not directly to data-page slots. That means the primary index remains the authority for locating a row. If data placement changes later, we have fewer secondary structures that need to know about physical row addresses.</p>
+<h2 id="s4">4. The first complication: secondary keys are not unique</h2>
+<p>Our teaching B+tree from Part 4 assumes one value per key. It rejects duplicates. That was perfect for <code>rowid</code> because rowids are unique. It is not enough for ordinary columns.</p>
+<pre><code>alice  age=30
+carol  age=30
+erin   age=30</code></pre>
+<p>All three rows need to be reachable through the same equality key. We therefore need a layer between a secondary B+tree key and the actual rowids.</p>
+<div class="box question"><strong>Why not simply change BTree to allow duplicate keys?</strong><p>We could, but then every primary-tree operation from Part 4 becomes more complicated too. For this chapter we keep the proven unique-key B+tree and make duplicates explicit with bucket pages. This isolates the new problem instead of rewriting a working core structure.</p></div>
+<h2 id="s5">5. Our Part 9 secondary-index design</h2>
+<p>The persistent structure has two levels:</p><pre><code>typed column value
+      |
+      v
+stable 64-bit hash
+      |
+      v
+secondary B+tree       (one tree entry per distinct hash)
+      |
+      v
+bucket page chain      (many rowids may share that hash)
+      |
+      v
+rowid primary B+tree
+      |
+      v
+actual row</code></pre>
+<p>This is intentionally optimized for the exact pain in the roadmap: <strong>equality queries</strong>. The existing B+tree only accepts signed 64-bit integer keys, while our schemas allow <code>INT</code>, <code>BOOL</code>, and <code>TEXT(n)</code>. A deterministic typed hash converts all three into one fixed-size search key.</p>
+<div class="box warning"><strong>This is not an ordered secondary index yet</strong><p>Hashing destroys value order. <code>age = 30</code> can be fast, but <code>age BETWEEN 20 AND 30</code> cannot walk this index in sorted age order. A later production design would use an order-preserving encoded key format in B+tree cells. We are choosing the smallest design that teaches duplicate secondary keys, persistence, planner selection, maintenance, and transaction interaction correctly.</p></div>
+<h2 id="s6">6. Hash collisions mean an index hit is a candidate, not proof</h2>
+<p>A 64-bit hash makes collisions very unlikely, but “unlikely” is not the same as “impossible.” Two different values can theoretically produce the same hash.</p><pre><code>hash("alice") = H
+hash("some other bytes") = H   // theoretically possible</code></pre>
+<p>Therefore the planner never treats the secondary index as the final predicate evaluator. The index produces candidate rowids. The executor loads those rows and applies the real typed equality predicate again.</p><pre><code>SecondaryIndexLookup(idx_users_name, hash("alice"))
+        |
+        v
+candidate rows
+        |
+        v
+Filter(recheck name = "alice")
+        |
+        v
+correct result</code></pre>
+<div class="box insight"><strong>Useful database habit</strong><p>An access method narrows the search space. The executor is still responsible for SQL truth. This is also how many real systems handle lossy indexes, approximate indexes, or conditions that an index can only partially enforce.</p></div>
+<h2 id="s7">7. Give the new structures real page types</h2>
+<p>Part 3 taught us that a persistent page should identify what kind of object it contains. Part 9 adds two page types:</p><pre><code>PageTypeIndexCatalog = 6
+PageTypeIndexBucket  = 7</code></pre>
+<p>The shared 32-byte page header still gives us magic bytes, page number, generation, and checksum. The new type values simply let validation distinguish an index-catalog page from a row-data page or a B+tree node.</p>
+<p>That matters during corruption checks. If an index catalog pointer accidentally lands on a data page, the engine should say “wrong page type” instead of interpreting arbitrary row bytes as index metadata.</p>
+<h2 id="s8">8. Persist index definitions in a separate catalog</h2>
+<p>A secondary index must survive process restart. It needs a name, the table it belongs to, the indexed column, and the root page of its B+tree.</p><pre><code>SecondaryIndex
+  id
+  name
+  table_id
+  column_index
+  root_page</code></pre>
+<p>We could squeeze this information into the existing table-catalog entries, but Part 5 deliberately made those entries about tables and schemas. Part 9 creates a separate linked list of <code>index-catalog</code> pages. That separation also lets a table eventually own many indexes without inflating every table-catalog slot.</p>
+<table><tr><th>Index catalog field</th><th>Meaning</th></tr><tr><td>index id</td><td>Persistent identity for validation and debugging.</td></tr><tr><td>index name</td><td>Used by <code>.indexes</code> and <code>.indextree</code>.</td></tr><tr><td>table id</td><td>Which table owns this index.</td></tr><tr><td>column index</td><td>Which schema column supplies the indexed value.</td></tr><tr><td>B+tree root page</td><td>Where lookup begins after restart.</td></tr></table>
+<h2 id="s9">9. Extend page 0 without breaking Part 8 files</h2>
+<p>Page 0 already has unused bytes after the Part 5 metadata fields. We use four of them as 64-bit fields:</p><pre><code>offset  96: first_index_catalog_page
+offset 104: last_index_catalog_page
+offset 112: next_index_id
+offset 120: index_count</code></pre>
+<p>An old Part 8 database contains zeros there because those bytes were reserved/unused. Part 9 interprets:</p><pre><code>first=0, last=0, count=0
+=&gt; this database has no secondary-index catalog yet
+
+next_index_id=0
+=&gt; treat as 1 for backward compatibility</code></pre>
+<p>The first <code>CREATE INDEX</code> lazily allocates an index-catalog page and then persists those metadata fields. We do not need to rewrite an old database merely to open it.</p>
+<h2 id="s10">10. Design the duplicate bucket page</h2>
+<p>A B+tree entry needs one fixed pointer. That pointer leads to the first bucket page for one hashed key.</p><pre><code>index-bucket page
++------------------------------+
+| common 32-byte page header   |
++------------------------------+
+| index_id        8 bytes      |
+| hash_key        8 bytes      |
+| rowid_count     2 bytes      |
+| next_bucket     8 bytes      |
+| ...padding...                |
++------------------------------+
+| rowid[0]        8 bytes      |
+| rowid[1]        8 bytes      |
+| rowid[2]        8 bytes      |
+| ...                          |
++------------------------------+</code></pre>
+<p>With our offsets, one bucket can hold hundreds of rowids. If an extremely common value fills a page, <code>next_bucket</code> points to another page. This means duplicate values do not force the B+tree itself to contain duplicate keys.</p>
+<div class="math">one hash key → one B+tree entry → one or more bucket pages → many rowids</div>
+<h2 id="s11">11. A typed hash must include the type</h2>
+<p>Hashing only the text representation would create avoidable ambiguity. We prefix the bytes with a type tag:</p><pre><code>INT 30     -&gt; [TypeInt64] + little-endian int64(30)
+BOOL true  -&gt; [TypeBool]  + 0x01
+TEXT "30"  -&gt; [TypeText]  + bytes("30")</code></pre>
+<p>Then we run FNV-1a 64-bit over those bytes. The important property for this course is not cryptographic security; it is <strong>determinism</strong>. The same persisted value must compute the same key after restart.</p>
+<p><code>NULL</code> is skipped. Part 7 intentionally did not implement SQL <code>IS NULL</code>, and SQL <code>= NULL</code> is not a valid equality truth test. There is therefore no useful equality lookup to support for nulls yet.</p>
+<h2 id="s12">12. Teach CREATE INDEX to the lexer and parser</h2>
+<p>The new SQL form is:</p><pre><code>CREATE INDEX idx_users_age ON users(age);</code></pre>
+<p>The lexer needs two new keywords:</p><pre><code>INDEX
+ON</code></pre>
+<p>The parser adds one AST node:</p><pre><code>type CreateIndexStmt struct {
+    Name   string
+    Table  string
+    Column string
+}</code></pre>
+<p>The AST remains a description. Parsing this statement does not allocate any pages. Execution will resolve the table and column against the persisted schema and then build the physical index.</p>
+<div class="checkpoint"><h4>Checkpoint — stop after parsing</h4><pre><code>.tokens CREATE INDEX idx_users_age ON users(age);
+.ast CREATE INDEX idx_users_age ON users(age);</code></pre><p>You should be able to see the new syntax before any storage code is involved.</p></div>
+<h2 id="s13">13. Resolve names before building anything</h2>
+<p>When the executor receives <code>CreateIndexStmt</code>, it first checks ordinary semantic questions:</p><ol><li>Does the table exist?</li><li>Does the named column exist?</li><li>Is the index name unique?</li><li>Does this teaching engine already have an index on that table column?</li></ol>
+<p>Only then do we allocate the B+tree root and catalog entry. This is the same syntax/semantics separation we established in Part 6.</p>
+<div class="box teacher"><strong>Why only one secondary index per column here?</strong><p>Two indexes with identical keys would add maintenance cost without teaching a new concept. Production databases allow richer combinations—different collations, expressions, partial predicates, sort directions—but this chapter keeps the metadata model focused.</p></div>
+<h2 id="s14">14. Building an index means scanning existing rows once</h2>
+<p>Suppose the table already contains 100,000 rows when the user creates an index. The new structure cannot magically know their ages. <code>CREATE INDEX</code> must read the existing table and populate the index.</p><pre><code>CREATE INDEX idx_users_age ON users(age)
+
+1. allocate empty secondary B+tree root
+2. persist index definition
+3. TableScanCursor over existing visible rows
+4. for each non-NULL age:
+     hash typed age
+     append rowid to that hash bucket
+5. persist the final root page if splits changed it</code></pre>
+<p>This is an important cost model lesson: indexes accelerate future reads by doing work at creation time and on every later mutation.</p>
+<h2 id="s15">15. Insert one duplicate value into a bucket</h2>
+<p>The index-maintenance helper has two cases. First, perhaps this hash has never appeared:</p><pre><code>lookup hash H in secondary B+tree
+    |
+    +-- not found
+          allocate index-bucket page
+          bucket.rowids[0] = newRowID
+          insert H -&gt; bucketPage into B+tree</code></pre>
+<p>Second, the hash already has a bucket chain:</p><pre><code>lookup H -&gt; first bucket
+walk bucket pages
+  reuse a tombstoned zero slot if possible
+  else append if this page has room
+  else follow next_bucket
+  else allocate and link a new bucket page</code></pre>
+<p>Notice that rowids are stored, not complete row copies. We want one source of truth for row contents.</p>
+<h2 id="s16">16. Why DELETE leaves a zero in the bucket</h2>
+<p>Deleting a row must also maintain every secondary index on that table. Otherwise the index would keep producing a stale rowid forever.</p>
+<p>For this chapter we use a small tombstone inside bucket pages:</p><pre><code>bucket before delete:
+[2, 4, 9, 0, 0, ...]
+
+DELETE rowid 4
+
+bucket after delete:
+[2, 0, 9, 0, 0, ...]</code></pre>
+<p>Later inserts can reuse zero slots. We do not remove an empty hash key from the B+tree, merge bucket pages, or compact them yet. Those are free-space/deletion policies rather than planner fundamentals.</p>
+<h2 id="s17">17. INSERT now updates several persistent structures</h2>
+<p>Once indexes exist, one logical row insert may touch:</p><pre><code>data page
+primary rowid B+tree
+secondary index A bucket/B+tree
+secondary index B bucket/B+tree
+catalog page if a root split changes persisted metadata
+...</code></pre>
+<p>This is exactly why Part 8 had to come before Part 9. Without atomic transactions, an INSERT could update the table but crash before updating an index, leaving a logically corrupt database even though every individual page checksum was valid.</p>
+<div class="box insight"><strong>Architecture payoff</strong><p>The rollback journal works at the pager/page level. It does not need special knowledge of “secondary index updates.” Any old index page overwritten during a transaction gets a before-image just like a table page or catalog page.</p></div>
+<h2 id="s18">18. The planner is intentionally tiny</h2>
+<p>Part 9 does not build a cost-based optimizer. Our SQL subset has one optional equality predicate, so the planner can be explicit and understandable.</p><pre><code>WHERE absent?
+    -&gt; TableScan
+
+WHERE rowid = integer?
+    -&gt; RowIDLookup
+
+WHERE ordinary_column = literal
+and a secondary index exists?
+    -&gt; SecondaryIndexLookup + Filter(recheck)
+
+otherwise
+    -&gt; TableScan + Filter</code></pre>
+<p>This order matters. <code>rowid</code> already has the strongest direct access path, so we do not look for a secondary index there.</p>
+<h2 id="s19">19. Binding the predicate gives the planner a column number</h2>
+<p>The parser only knows the text identifier <code>age</code>. <code>CompilePredicate</code> from Part 7 resolves that name against the table schema and produces:</p><pre><code>CompiledPredicate{
+    columnIndex: 1,
+    literal: INT 30,
+}</code></pre>
+<p>Now the planner can ask:</p><pre><code>idx := store.FindIndex(table, predicate.columnIndex)</code></pre>
+<p>If an index exists, the same schema column also tells us how to convert the SQL literal into a typed <code>Value</code> before hashing it. This is another example of why a schema is executable metadata, not merely documentation.</p>
+<h2 id="s20">20. Build a real incremental SecondaryIndexCursor</h2>
+<p>Part 7 emphasized that cursors should remember state and yield rows incrementally. We keep that model here. The secondary cursor stores:</p><pre><code>current bucket page number
+current bucket page
+current rowid slot
+hash being searched
+index metadata
+owning table</code></pre>
+<p>Each <code>Next()</code> call advances until it finds one non-zero rowid, asks the primary rowid B+tree for that row, and yields it. When the bucket page is exhausted, it follows <code>next_bucket</code>.</p><pre><code>bucket page 20: [3, 17, 42] -&gt; next 31
+                         ^ cursor state
+
+Next() returns rowid 17
+next call resumes at rowid 42
+then moves to page 31</code></pre>
+<p>We do not materialize the whole bucket chain first. The execution model stays pull-based.</p>
+<h2 id="s21">21. Put a FilterCursor above the index lookup</h2>
+<p>The final plan for an indexed equality query is:</p><pre><code>.explain SELECT rowid, name FROM users WHERE age = 30;
+
+Project(rowid, name)
+  -&gt; Filter(recheck age = 30)
+  -&gt; SecondaryIndexLookup(index=idx_users_age, column=age)</code></pre>
+<p>The recheck serves two purposes. First, it protects correctness from the theoretical hash collision. Second, it preserves the clean executor architecture: access paths produce rows; predicate operators decide whether a row satisfies SQL conditions.</p>
+<h2 id="s22">22. Checkpoint: watch the plan change without changing the query</h2>
+<p>Create a small table and three rows:</p><pre><code>CREATE TABLE users (
+    name TEXT(40) NOT NULL,
+    age INT NOT NULL,
+    active BOOL NOT NULL
+);
+
+INSERT INTO users VALUES ('alice', 30, true);
+INSERT INTO users VALUES ('bob',   25, false);
+INSERT INTO users VALUES ('carol', 30, true);</code></pre>
+<p>Before the index:</p><pre><code>.explain SELECT rowid, name FROM users WHERE age = 30;
+
+Project(rowid, name)
+  -&gt; Filter(age = 30)
+  -&gt; TableScan(table=users)</code></pre>
+<p>Create the index:</p><pre><code>CREATE INDEX idx_users_age ON users(age);</code></pre>
+<p>Ask exactly the same query again:</p><pre><code>.explain SELECT rowid, name FROM users WHERE age = 30;
+
+Project(rowid, name)
+  -&gt; Filter(recheck age = 30)
+  -&gt; SecondaryIndexLookup(index=idx_users_age, column=age)</code></pre>
+<div class="box insight"><strong>This is the core Part 9 moment</strong><p>The SQL text and AST did not change. The planner found a better physical path because persistent metadata changed.</p></div>
+<h2 id="s23">23. Duplicates are the real test, not a unique demo</h2>
+<p>Run the actual query:</p><pre><code>SELECT rowid, name FROM users WHERE age = 30;
+
+rowid | name
+1 | alice
+3 | carol
+(2 row(s))</code></pre>
+<p>If your index implementation only returns Alice, you accidentally built a unique index. If it scans the table anyway, you built metadata but not an access method. If it returns both Alice and Carol through the bucket chain, the duplicate-key design is doing its job.</p>
+<h2 id="s24">24. Indexes work for INT, TEXT, and BOOL equality</h2>
+<p>Because the index key is a typed hash, the planner can use the same physical structure for all current scalar column types:</p><pre><code>CREATE INDEX idx_users_age    ON users(age);
+CREATE INDEX idx_users_name   ON users(name);
+CREATE INDEX idx_users_active ON users(active);
+
+SELECT * FROM users WHERE age = 30;
+SELECT * FROM users WHERE name = 'alice';
+SELECT * FROM users WHERE active = true;</code></pre>
+<p>The schema binder rejects mismatched predicates before hashing, so <code>age = 'thirty'</code> does not accidentally hash a string and search an integer index.</p>
+<h2 id="s25">25. Make the index visible with debugging commands</h2>
+<p>Add three course-oriented meta commands:</p><pre><code>.indexes
+.indexes users
+.indextree idx_users_age
+.indexbuckets idx_users_age</code></pre>
+<p>Example:</p><pre><code>minidb&gt; .indexes
+id=1 name=idx_users_age table=users column=age root_page=4
+
+minidb&gt; .indextree idx_users_age
+leaf page=4 keys=[899267551439155314 7596213772341923541] next=0
+
+minidb&gt; .indexbuckets idx_users_age
+index_bucket_pages= [6 7]</code></pre>
+<p>The B+tree keys look unfamiliar because they are signed 64-bit hashes. That is a useful reminder not to mistake this teaching equality index for an order-preserving age tree.</p>
+<h2 id="s26">26. Persistence test: the planner should remember after restart</h2>
+<p>Close MiniSQLite normally, then reopen the same database:</p><pre><code>./minidb demo.db
+
+.explain SELECT rowid, name FROM users WHERE age = 30;</code></pre>
+<p>You should still see:</p><pre><code>Project(rowid, name)
+  -&gt; Filter(recheck age = 30)
+  -&gt; SecondaryIndexLookup(index=idx_users_age, column=age)</code></pre>
+<p>If the planner falls back to a scan after restart, the in-memory index worked but the index catalog did not. Part 9 is about a <em>persistent</em> access path, so this checkpoint is mandatory.</p>
+<h2 id="s27">27. Rollback test: table and index must move together</h2>
+<p>Start from a table whose <code>age=25</code> bucket contains Bob and Dave:</p><pre><code>BEGIN;
+INSERT INTO users VALUES ('erin', 25, true);
+DELETE FROM users WHERE age = 25;
+SELECT * FROM users;
+ROLLBACK;
+
+SELECT rowid, name FROM users WHERE age = 25;</code></pre>
+<p>After rollback, both the row pages and index pages must describe the old state again. In the tested implementation the final query returns the pre-transaction candidates through the secondary index.</p>
+<p>This works without an “index rollback algorithm.” The pager journals every overwritten page, and <code>Store.Rollback</code> then reloads both table and index catalogs from recovered disk state.</p>
+<h2 id="s28">28. Crash test: force uncommitted index pages onto disk</h2>
+<p>This is the stronger test:</p><pre><code>BEGIN;
+INSERT INTO users VALUES ('ghost', 25, true);
+.flush
+.journal
+.crash</code></pre>
+<p>The tested implementation reports a live journal containing several page before-images because one INSERT may have dirtied the row page, primary B+tree, secondary bucket, and catalog metadata.</p>
+<p>Restart:</p><pre><code>./minidb demo.db
+SELECT rowid, name FROM users WHERE age = 25;
+.journal
+.verify</code></pre>
+<p><code>ghost</code> must be absent, the journal must be gone, and all page checksums must verify. This demonstrates why transaction/recovery had to precede secondary indexes in the roadmap.</p>
+<h2 id="s29">29. DELETE through an indexed predicate uses the same planner</h2>
+<p>Part 7 implemented general equality DELETE by first collecting matching rowids, then mutating them. That remains a useful safety shape. The difference is how the matching rowids are discovered.</p><pre><code>.explain DELETE FROM users WHERE age = 30;
+
+Delete(table=users)
+  -&gt; Filter(recheck age = 30)
+  -&gt; SecondaryIndexLookup(index=idx_users_age, column=age)
+  -&gt; TombstoneMatchingRows</code></pre>
+<p>Each <code>Store.Delete</code> also removes the rowid from every secondary index on the table before tombstoning the row itself. All of that occurs inside the same explicit or autocommit transaction.</p>
+<h2 id="s30">30. Why writes become more expensive</h2>
+<table><tr><th>Operation</th><th>Without secondary index</th><th>With secondary indexes</th></tr><tr><td>SELECT by indexed equality</td><td>Scan many row pages</td><td>Tree lookup + small bucket + candidate rows</td></tr><tr><td>INSERT</td><td>Row + primary index</td><td>Row + primary index + every secondary index</td></tr><tr><td>DELETE</td><td>Tombstone row</td><td>Remove rowid from every secondary bucket + tombstone</td></tr><tr><td>Storage</td><td>Rows + primary tree</td><td>Additional B+tree, catalog, and bucket pages</td></tr></table>
+<p>An index is not “free speed.” It is a deliberate trade: spend write I/O, storage, and transaction complexity to save read work for selected predicates.</p>
+<h2 id="s31">31. This is a rule-based planner, not a cost-based optimizer</h2>
+<p>Our planner knows only structural facts: rowid access exists, an index may exist on a column, and otherwise scanning works. It does not estimate cardinality.</p>
+<p>That means it will choose <code>idx_active</code> for <code>active = true</code> even if 99.9% of the table is active and scanning might actually be cheaper. A production optimizer would maintain statistics such as row count, distinct values, null fraction, histogram buckets, and index depth, then estimate competing plan costs.</p>
+<div class="box purplebox"><strong>Part 9 stopping point</strong><p>The goal is to make plan choice visible and correct before making it clever. First learn “there can be multiple physical ways to execute one AST.” Cost estimation comes after that mental model is stable.</p></div>
+<h2 id="s32">32. What we intentionally do not implement yet</h2>
+<ul><li><strong>No range predicates.</strong> The hashed key format is equality-oriented.</li><li><strong>No composite indexes.</strong> One index targets one schema column.</li><li><strong>No UNIQUE constraint.</strong> Duplicate values are expected and stored in buckets.</li><li><strong>No UPDATE statement.</strong> If we add UPDATE later, it must remove the old indexed value and add the new one atomically.</li><li><strong>No DROP INDEX.</strong> That requires reclaiming tree/bucket/catalog pages.</li><li><strong>No bucket compaction.</strong> Delete leaves reusable zero slots.</li><li><strong>No cost statistics.</strong> The planner uses deterministic rules.</li><li><strong>No covering indexes.</strong> We always return to the primary row storage to produce actual rows.</li></ul>
+<p>These are not hidden defects. Each omission points to a concrete next engineering problem.</p>
+<h2 id="s33">33. Exercises: make the planner and index model stick</h2>
+<div class="checkpoint"><h4>Exercise 1 — prove the plan transition</h4><p>Insert at least 200 rows with repeated ages. Capture <code>.explain</code> and pager <code>.stats</code> before and after creating an age index. Explain which page reads disappeared.</p></div>
+<div class="checkpoint"><h4>Exercise 2 — duplicate stress</h4><p>Insert 1,000 rows with the same boolean value, index that column, and inspect <code>.indexbuckets</code>. How many rowids fit in one bucket page? Force a bucket-chain overflow and verify the cursor crosses to the next page.</p></div>
+<div class="checkpoint"><h4>Exercise 3 — transaction failure</h4><p>Inside <code>BEGIN</code>, insert and delete indexed rows, run <code>.flush</code>, then <code>.crash</code>. On restart, verify both query results and <code>.verify</code>.</p></div>
+<div class="checkpoint"><h4>Exercise 4 — planner selectivity</h4><p>Create an index on a BOOL column where almost every row is <code>true</code>. Why might a real optimizer prefer a scan even though our rule-based planner chooses the index?</p></div>
+<div class="checkpoint"><h4>Exercise 5 — design an ordered key encoder</h4><p>Without coding it yet, design byte encodings for signed INT, BOOL, and TEXT that preserve sort order. What would have to change in our current <code>int64</code>-only B+tree cells?</p></div>
+<div class="checkpoint"><h4>Exercise 6 — UPDATE thought experiment</h4><p>Write the exact atomic steps required for <code>UPDATE users SET age = 31 WHERE rowid = 5</code> when <code>age</code> is indexed. Identify every persistent structure that changes.</p></div>
+<h2 id="s34">34. Complete program — only now assemble all files</h2><div class="final"><h3>Final reference implementation</h3><p>Only now assemble the complete project. The earlier sections intentionally showed fragments and checkpoints; this section is the one-shot reference.</p><div class="filetree">minisqlite-part9/
+├── go.mod
+├── format.go
+├── pager.go
+├── transaction.go
+├── row.go
+├── btree.go
+├── catalog.go
+├── index.go
+├── store.go
+├── cursor.go
+├── secondary_cursor.go
+├── lexer.go
+├── parser.go
+├── sql.go
+└── main.go</div><h3>go.mod</h3><pre><code>module minidb
+
+go 1.22</code></pre><h3>format.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+)
+
+const (
+	PageSize          = 4096
+	PageHeaderSize    = 32
+	PageMagic         = "PG05"
+	PageHeaderVersion = uint16(1)
+	ChecksumAlgorithm = uint32(1)
+)
+
+type PageType uint8
+
+const (
+	PageTypeMetadata      PageType = 1
+	PageTypeData          PageType = 2
+	PageTypeBTreeLeaf     PageType = 3
+	PageTypeBTreeInternal PageType = 4
+	PageTypeCatalog       PageType = 5
+	PageTypeIndexCatalog  PageType = 6
+	PageTypeIndexBucket   PageType = 7
+)
+
+func (t PageType) String() string {
+	switch t {
+	case PageTypeMetadata:
+		return "metadata"
+	case PageTypeData:
+		return "data"
+	case PageTypeBTreeLeaf:
+		return "btree-leaf"
+	case PageTypeBTreeInternal:
+		return "btree-internal"
+	case PageTypeCatalog:
+		return "catalog"
+	case PageTypeIndexCatalog:
+		return "index-catalog"
+	case PageTypeIndexBucket:
+		return "index-bucket"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(t))
+	}
+}
+
+func validPageType(t PageType) bool {
+	return t == PageTypeMetadata || t == PageTypeData || t == PageTypeBTreeLeaf || t == PageTypeBTreeInternal || t == PageTypeCatalog || t == PageTypeIndexCatalog || t == PageTypeIndexBucket
+}
+
+type PageHeaderInfo struct {
+	Type       PageType
+	Number     uint64
+	Generation uint64
+	Checksum   uint32
+}
+
+func initializePageData(data []byte, pageNum uint64, pageType PageType) error {
+	if len(data) != PageSize {
+		return fmt.Errorf("initialize page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	if !validPageType(pageType) {
+		return fmt.Errorf("initialize page: invalid page type %d", pageType)
+	}
+	clear(data)
+	copy(data[0:4], []byte(PageMagic))
+	binary.LittleEndian.PutUint16(data[4:6], PageHeaderVersion)
+	data[6] = byte(pageType)
+	binary.LittleEndian.PutUint64(data[8:16], pageNum)
+	return nil
+}
+
+func computePageChecksum(data []byte) (uint32, error) {
+	if len(data) != PageSize {
+		return 0, fmt.Errorf("checksum: expected %d bytes, got %d", PageSize, len(data))
+	}
+	h := crc32.NewIEEE()
+	_, _ = h.Write(data[:24])
+	_, _ = h.Write([]byte{0, 0, 0, 0})
+	_, _ = h.Write(data[28:])
+	return h.Sum32(), nil
+}
+
+func decodePageHeader(data []byte) PageHeaderInfo {
+	return PageHeaderInfo{
+		Type:       PageType(data[6]),
+		Number:     binary.LittleEndian.Uint64(data[8:16]),
+		Generation: binary.LittleEndian.Uint64(data[16:24]),
+		Checksum:   binary.LittleEndian.Uint32(data[24:28]),
+	}
+}
+
+func sealPageData(data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("seal page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	generation := binary.LittleEndian.Uint64(data[16:24]) + 1
+	binary.LittleEndian.PutUint64(data[16:24], generation)
+	binary.LittleEndian.PutUint32(data[24:28], 0)
+	checksum, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	binary.LittleEndian.PutUint32(data[24:28], checksum)
+	return decodePageHeader(data), nil
+}
+
+func validatePageData(expectedPageNum uint64, data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: expected %d bytes, got %d", expectedPageNum, PageSize, len(data))
+	}
+	if string(data[0:4]) != PageMagic {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: bad page magic %q", expectedPageNum, string(data[0:4]))
+	}
+	if got := binary.LittleEndian.Uint16(data[4:6]); got != PageHeaderVersion {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: unsupported page-header version %d", expectedPageNum, got)
+	}
+	info := decodePageHeader(data)
+	if !validPageType(info.Type) {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: invalid page type %d", expectedPageNum, info.Type)
+	}
+	if info.Number != expectedPageNum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: stored page number is %d", expectedPageNum, info.Number)
+	}
+	if info.Checksum == 0 {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: missing checksum", expectedPageNum)
+	}
+	computed, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if computed != info.Checksum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: checksum mismatch: stored=%08x computed=%08x", expectedPageNum, info.Checksum, computed)
+	}
+	return info, nil
+}</code></pre><h3>pager.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"sort"
+)
+
+type Page struct {
+	Number    uint64
+	Type      PageType
+	Data      []byte
+	dirty     bool
+	cleanData []byte // last durable image of this page
+}
+
+func (p *Page) MarkDirty() { p.dirty = true }
+
+type PagerStats struct {
+	CachedPages        int
+	TotalPages         uint64
+	CacheHits          uint64
+	DiskReads          uint64
+	DiskWrites         uint64
+	ValidationFailures uint64
+}
+
+type Pager struct {
+	path               string
+	file               *os.File
+	pages              map[uint64]*Page
+	numPages           uint64
+	cacheHits          uint64
+	diskReads          uint64
+	diskWrites         uint64
+	validationFailures uint64
+
+	txActive        bool
+	txOriginalPages uint64
+	journal         *RollbackJournal
+}
+
+func OpenPager(path string) (*Pager, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	if recovered, err := RecoverJournal(path, file); err != nil {
+		file.Close()
+		return nil, err
+	} else if recovered {
+		// Recovery writes directly to the file and fsyncs it before returning.
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if info.Size()%PageSize != 0 {
+		file.Close()
+		return nil, fmt.Errorf("database size %d is not a multiple of page size %d", info.Size(), PageSize)
+	}
+	return &amp;Pager{path: path, file: file, pages: make(map[uint64]*Page), numPages: uint64(info.Size() / PageSize)}, nil
+}
+
+func cloneBytes(b []byte) []byte {
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
+}
+
+func (p *Pager) GetPage(pageNum uint64) (*Page, error) {
+	if page, ok := p.pages[pageNum]; ok {
+		p.cacheHits++
+		return page, nil
+	}
+	if pageNum &gt;= p.numPages {
+		return nil, fmt.Errorf("page %d does not exist", pageNum)
+	}
+	page := &amp;Page{Number: pageNum, Data: make([]byte, PageSize)}
+	n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil &amp;&amp; err != io.EOF {
+		return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+	}
+	p.diskReads++
+	info, err := validatePageData(pageNum, page.Data)
+	if err != nil {
+		p.validationFailures++
+		return nil, err
+	}
+	page.Type = info.Type
+	page.cleanData = cloneBytes(page.Data)
+	p.pages[pageNum] = page
+	return page, nil
+}
+
+func (p *Pager) NewPage(pageType PageType) (*Page, error) {
+	pageNum := p.numPages
+	page := &amp;Page{Number: pageNum, Type: pageType, Data: make([]byte, PageSize), dirty: true}
+	if err := initializePageData(page.Data, pageNum, pageType); err != nil {
+		return nil, err
+	}
+	p.pages[pageNum] = page
+	p.numPages++
+	return page, nil
+}
+
+func (p *Pager) FlushPage(pageNum uint64) error {
+	page, ok := p.pages[pageNum]
+	if !ok || !page.dirty {
+		return nil
+	}
+
+	// WAL rule for our rollback journal: before overwriting an old database
+	// page, make its old durable image durable in the journal first.
+	if p.txActive &amp;&amp; pageNum &lt; p.txOriginalPages {
+		if page.cleanData == nil {
+			return fmt.Errorf("page %d has no durable before-image", pageNum)
+		}
+		if err := p.journal.RecordPage(pageNum, page.cleanData); err != nil {
+			return err
+		}
+	}
+
+	if _, err := sealPageData(page.Data); err != nil {
+		return err
+	}
+	n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil {
+		return fmt.Errorf("write page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return fmt.Errorf("write page %d: expected %d bytes, wrote %d", pageNum, PageSize, n)
+	}
+	page.dirty = false
+	page.cleanData = cloneBytes(page.Data)
+	p.diskWrites++
+	return nil
+}
+
+func (p *Pager) FlushAll() error {
+	nums := make([]uint64, 0, len(p.pages))
+	for n := range p.pages {
+		nums = append(nums, n)
+	}
+	sort.Slice(nums, func(i, j int) bool { return nums[i] &lt; nums[j] })
+	for _, n := range nums {
+		if err := p.FlushPage(n); err != nil {
+			return err
+		}
+	}
+	return p.file.Sync()
+}
+
+func (p *Pager) Begin() error {
+	if p.txActive {
+		return fmt.Errorf("transaction already active")
+	}
+	// Establish a clean, durable boundary for the state the journal protects.
+	if err := p.FlushAll(); err != nil {
+		return err
+	}
+	j, err := CreateRollbackJournal(p.path, p.numPages)
+	if err != nil {
+		return err
+	}
+	p.txActive = true
+	p.txOriginalPages = p.numPages
+	p.journal = j
+	return nil
+}
+
+func (p *Pager) Commit() error {
+	if !p.txActive {
+		return fmt.Errorf("no active transaction")
+	}
+	if err := p.FlushAll(); err != nil {
+		return err
+	}
+	if err := p.journal.CloseAndRemove(); err != nil {
+		return err
+	}
+	p.txActive = false
+	p.txOriginalPages = 0
+	p.journal = nil
+	return nil
+}
+
+func (p *Pager) Rollback() error {
+	if !p.txActive {
+		return fmt.Errorf("no active transaction")
+	}
+	if err := p.journal.Close(); err != nil {
+		return err
+	}
+	if _, err := RecoverJournal(p.path, p.file); err != nil {
+		return err
+	}
+	info, err := p.file.Stat()
+	if err != nil {
+		return err
+	}
+	p.pages = make(map[uint64]*Page)
+	p.numPages = uint64(info.Size() / PageSize)
+	p.txActive = false
+	p.txOriginalPages = 0
+	p.journal = nil
+	return nil
+}
+
+func (p *Pager) InTransaction() bool { return p.txActive }
+
+func (p *Pager) VerifyAll() (uint64, error) {
+	if err := p.FlushAll(); err != nil {
+		return 0, err
+	}
+	buf := make([]byte, PageSize)
+	for pageNum := uint64(0); pageNum &lt; p.numPages; pageNum++ {
+		n, err := p.file.ReadAt(buf, int64(pageNum)*PageSize)
+		if err != nil &amp;&amp; err != io.EOF {
+			return pageNum, fmt.Errorf("verify page %d: %w", pageNum, err)
+		}
+		if n != PageSize {
+			return pageNum, fmt.Errorf("verify page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+		}
+		if _, err := validatePageData(pageNum, buf); err != nil {
+			p.validationFailures++
+			return pageNum, err
+		}
+	}
+	return p.numPages, nil
+}
+
+func (p *Pager) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	page, err := p.GetPage(pageNum)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if page.dirty {
+		if err := p.FlushPage(pageNum); err != nil {
+			return PageHeaderInfo{}, err
+		}
+	}
+	return validatePageData(pageNum, page.Data)
+}
+
+func (p *Pager) Stats() PagerStats {
+	return PagerStats{len(p.pages), p.numPages, p.cacheHits, p.diskReads, p.diskWrites, p.validationFailures}
+}
+
+func (p *Pager) Close() error {
+	if p.txActive {
+		if err := p.Rollback(); err != nil {
+			_ = p.file.Close()
+			return err
+		}
+	} else if err := p.FlushAll(); err != nil {
+		_ = p.file.Close()
+		return err
+	}
+	return p.file.Close()
+}</code></pre><h3>transaction.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"io"
+	"os"
+)
+
+const (
+	JournalMagic      = "MDBJNL01"
+	JournalVersion    = uint32(1)
+	JournalHeaderSize = 32
+	JournalEntrySize  = 8 + PageSize
+)
+
+type RollbackJournal struct {
+	path          string
+	file          *os.File
+	originalPages uint64
+	recorded      map[uint64]bool
+}
+
+func journalPath(dbPath string) string { return dbPath + "-journal" }
+
+func CreateRollbackJournal(dbPath string, originalPages uint64) (*RollbackJournal, error) {
+	path := journalPath(dbPath)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("create rollback journal: %w", err)
+	}
+	header := make([]byte, JournalHeaderSize)
+	copy(header[0:8], []byte(JournalMagic))
+	binary.LittleEndian.PutUint32(header[8:12], JournalVersion)
+	binary.LittleEndian.PutUint32(header[12:16], PageSize)
+	binary.LittleEndian.PutUint64(header[16:24], originalPages)
+	if _, err := f.Write(header); err != nil {
+		f.Close()
+		return nil, err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return &amp;RollbackJournal{path: path, file: f, originalPages: originalPages, recorded: make(map[uint64]bool)}, nil
+}
+
+func (j *RollbackJournal) RecordPage(pageNum uint64, before []byte) error {
+	if j.recorded[pageNum] {
+		return nil
+	}
+	if len(before) != PageSize {
+		return fmt.Errorf("journal page %d: expected %d bytes, got %d", pageNum, PageSize, len(before))
+	}
+	if _, err := validatePageData(pageNum, before); err != nil {
+		return fmt.Errorf("journal page %d before-image invalid: %w", pageNum, err)
+	}
+	entry := make([]byte, JournalEntrySize)
+	binary.LittleEndian.PutUint64(entry[0:8], pageNum)
+	copy(entry[8:], before)
+	if _, err := j.file.Write(entry); err != nil {
+		return fmt.Errorf("journal page %d: %w", pageNum, err)
+	}
+	// This sync is what makes it safe to overwrite the corresponding DB page.
+	if err := j.file.Sync(); err != nil {
+		return fmt.Errorf("sync journal page %d: %w", pageNum, err)
+	}
+	j.recorded[pageNum] = true
+	return nil
+}
+
+func (j *RollbackJournal) Close() error {
+	if j.file == nil {
+		return nil
+	}
+	err := j.file.Close()
+	j.file = nil
+	return err
+}
+
+func (j *RollbackJournal) CloseAndRemove() error {
+	if err := j.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(j.path); err != nil &amp;&amp; !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+type JournalInfo struct {
+	Exists        bool
+	OriginalPages uint64
+	Entries       int
+	Size          int64
+}
+
+func InspectJournal(dbPath string) (JournalInfo, error) {
+	path := journalPath(dbPath)
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return JournalInfo{}, nil
+	}
+	if err != nil {
+		return JournalInfo{}, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return JournalInfo{}, err
+	}
+	defer f.Close()
+	original, err := readJournalHeader(f)
+	if err != nil {
+		return JournalInfo{Exists: true, Size: info.Size()}, err
+	}
+	complete := info.Size() - JournalHeaderSize
+	entries := 0
+	if complete &gt; 0 {
+		entries = int(complete / JournalEntrySize)
+	}
+	return JournalInfo{Exists: true, OriginalPages: original, Entries: entries, Size: info.Size()}, nil
+}
+
+func readJournalHeader(f *os.File) (uint64, error) {
+	header := make([]byte, JournalHeaderSize)
+	if _, err := io.ReadFull(f, header); err != nil {
+		return 0, err
+	}
+	if string(header[0:8]) != JournalMagic {
+		return 0, fmt.Errorf("bad journal magic")
+	}
+	if v := binary.LittleEndian.Uint32(header[8:12]); v != JournalVersion {
+		return 0, fmt.Errorf("unsupported journal version %d", v)
+	}
+	if ps := binary.LittleEndian.Uint32(header[12:16]); ps != PageSize {
+		return 0, fmt.Errorf("journal page size %d does not match %d", ps, PageSize)
+	}
+	return binary.LittleEndian.Uint64(header[16:24]), nil
+}
+
+// RecoverJournal restores every complete before-image and truncates pages that
+// were allocated after BEGIN. A partial final journal entry is safe to ignore:
+// the pager never overwrites that database page until the complete entry has
+// been fsynced.
+func RecoverJournal(dbPath string, db *os.File) (bool, error) {
+	path := journalPath(dbPath)
+	jf, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer jf.Close()
+
+	st, err := jf.Stat()
+	if err != nil {
+		return false, err
+	}
+	if st.Size() &lt; JournalHeaderSize {
+		// The journal header never became durable, so the pager could not have
+		// started overwriting database pages under this transaction.
+		jf.Close()
+		_ = os.Remove(path)
+		return true, nil
+	}
+
+	originalPages, err := readJournalHeader(jf)
+	if err != nil {
+		return false, fmt.Errorf("cannot recover %s: %w", path, err)
+	}
+
+	for {
+		prefix := make([]byte, 8)
+		n, err := io.ReadFull(jf, prefix)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			return false, err
+		}
+		if n != 8 {
+			break
+		}
+		pageNum := binary.LittleEndian.Uint64(prefix)
+		image := make([]byte, PageSize)
+		if _, err := io.ReadFull(jf, image); err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		} else if err != nil {
+			return false, err
+		}
+		if pageNum &gt;= originalPages {
+			return false, fmt.Errorf("journal contains impossible old page %d (original pages=%d)", pageNum, originalPages)
+		}
+		if _, err := validatePageData(pageNum, image); err != nil {
+			return false, fmt.Errorf("journal before-image page %d failed validation: %w", pageNum, err)
+		}
+		if _, err := db.WriteAt(image, int64(pageNum)*PageSize); err != nil {
+			return false, err
+		}
+	}
+
+	if err := db.Truncate(int64(originalPages) * PageSize); err != nil {
+		return false, err
+	}
+	if err := db.Sync(); err != nil {
+		return false, err
+	}
+	jf.Close()
+	if err := os.Remove(path); err != nil &amp;&amp; !os.IsNotExist(err) {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) Begin() error { return s.pager.Begin() }
+
+func (s *Store) Commit() error { return s.pager.Commit() }
+
+func (s *Store) Rollback() error {
+	if err := s.pager.Rollback(); err != nil {
+		return err
+	}
+	return s.reloadStateFromDisk()
+}
+
+func (s *Store) InTransaction() bool { return s.pager.InTransaction() }
+
+func (s *Store) JournalInfo() (JournalInfo, error) { return InspectJournal(s.pager.path) }
+
+func (s *Store) reloadStateFromDisk() error {
+	s.tables = make(map[string]*Table)
+	s.indexes = make(map[string]*SecondaryIndex)
+	meta, err := s.pager.GetPage(HeaderPage)
+	if err != nil {
+		return err
+	}
+	first, last, nextID, count, firstIdx, lastIdx, nextIdxID, idxCount, err := readDatabaseMetadata(meta)
+	if err != nil {
+		return err
+	}
+	s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount = first, last, nextID, count
+	s.firstIndexCatalogPage, s.lastIndexCatalogPage, s.nextIndexID, s.indexCount = firstIdx, lastIdx, nextIdxID, idxCount
+	if err := s.loadCatalog(); err != nil {
+		return err
+	}
+	if uint64(len(s.tables)) != s.tableCount {
+		return fmt.Errorf("catalog says %d tables but loaded %d", s.tableCount, len(s.tables))
+	}
+	return s.loadIndexes()
+}</code></pre><h3>row.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+const (
+	MaxColumns       = 10
+	MaxColumnNameLen = 24
+	MaxTextLen       = 512
+	RowHeaderSize    = 24
+)
+
+type ColumnType uint8
+
+const (
+	TypeInt64 ColumnType = 1
+	TypeText  ColumnType = 2
+	TypeBool  ColumnType = 3
+)
+
+func (t ColumnType) String() string {
+	switch t {
+	case TypeInt64:
+		return "INT"
+	case TypeText:
+		return "TEXT"
+	case TypeBool:
+		return "BOOL"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", uint8(t))
+	}
+}
+
+type Column struct {
+	Name     string
+	Type     ColumnType
+	Nullable bool
+	MaxLen   uint16
+	Offset   uint16
+	Width    uint16
+}
+
+type Schema struct {
+	Columns []Column
+	RowSize uint32
+}
+
+type Value struct {
+	Type ColumnType
+	Null bool
+	Int  int64
+	Text string
+	Bool bool
+}
+
+type Row struct {
+	RowID   int64
+	Deleted bool
+	Values  []Value
+}
+
+func columnWidth(c Column) (uint16, error) {
+	switch c.Type {
+	case TypeInt64:
+		return 8, nil
+	case TypeBool:
+		return 1, nil
+	case TypeText:
+		if c.MaxLen == 0 || c.MaxLen &gt; MaxTextLen {
+			return 0, fmt.Errorf("TEXT length must be between 1 and %d", MaxTextLen)
+		}
+		return 2 + c.MaxLen, nil
+	default:
+		return 0, fmt.Errorf("unsupported column type %d", c.Type)
+	}
+}
+
+func CompileSchema(columns []Column) (Schema, error) {
+	if len(columns) == 0 {
+		return Schema{}, fmt.Errorf("a table needs at least one column")
+	}
+	if len(columns) &gt; MaxColumns {
+		return Schema{}, fmt.Errorf("at most %d columns are supported", MaxColumns)
+	}
+	seen := map[string]bool{}
+	compiled := make([]Column, len(columns))
+	offset := RowHeaderSize
+	for i, c := range columns {
+		if c.Name == "" || len([]byte(c.Name)) &gt; MaxColumnNameLen {
+			return Schema{}, fmt.Errorf("column %q must be 1..%d bytes", c.Name, MaxColumnNameLen)
+		}
+		key := strings.ToLower(c.Name)
+		if seen[key] {
+			return Schema{}, fmt.Errorf("duplicate column name %q", c.Name)
+		}
+		seen[key] = true
+		width, err := columnWidth(c)
+		if err != nil {
+			return Schema{}, fmt.Errorf("column %s: %w", c.Name, err)
+		}
+		if offset+int(width) &gt; 65535 {
+			return Schema{}, fmt.Errorf("row layout is too large")
+		}
+		c.Offset = uint16(offset)
+		c.Width = width
+		compiled[i] = c
+		offset += int(width)
+	}
+	// Round rows to 8 bytes so offsets are easier to inspect in a hex dump.
+	if rem := offset % 8; rem != 0 {
+		offset += 8 - rem
+	}
+	if offset &gt; PageSize-dataRowsOffset {
+		return Schema{}, fmt.Errorf("row size %d is too large to fit in one data page", offset)
+	}
+	return Schema{Columns: compiled, RowSize: uint32(offset)}, nil
+}
+
+func ParseColumnSpec(spec string) (Column, error) {
+	pair := strings.SplitN(spec, ":", 2)
+	if len(pair) != 2 || pair[0] == "" || pair[1] == "" {
+		return Column{}, fmt.Errorf("column spec %q must look like name:INT, name:BOOL, or name:TEXT(40)", spec)
+	}
+	name := pair[0]
+	typeSpec := pair[1]
+	nullable := false
+	if strings.HasSuffix(typeSpec, "?") {
+		nullable = true
+		typeSpec = strings.TrimSuffix(typeSpec, "?")
+	}
+	upper := strings.ToUpper(typeSpec)
+	c := Column{Name: name, Nullable: nullable}
+	switch {
+	case upper == "INT" || upper == "INTEGER" || upper == "INT64":
+		c.Type = TypeInt64
+	case upper == "BOOL" || upper == "BOOLEAN":
+		c.Type = TypeBool
+	case strings.HasPrefix(upper, "TEXT(") &amp;&amp; strings.HasSuffix(upper, ")"):
+		raw := upper[len("TEXT(") : len(upper)-1]
+		n, err := strconv.Atoi(raw)
+		if err != nil || n &lt; 1 || n &gt; MaxTextLen {
+			return Column{}, fmt.Errorf("TEXT length in %q must be 1..%d", spec, MaxTextLen)
+		}
+		c.Type = TypeText
+		c.MaxLen = uint16(n)
+	default:
+		return Column{}, fmt.Errorf("unsupported type %q", typeSpec)
+	}
+	return c, nil
+}
+
+func ParseValueToken(c Column, token string) (Value, error) {
+	if strings.EqualFold(token, "NULL") {
+		if !c.Nullable {
+			return Value{}, fmt.Errorf("column %s is NOT NULL", c.Name)
+		}
+		return Value{Type: c.Type, Null: true}, nil
+	}
+	v := Value{Type: c.Type}
+	switch c.Type {
+	case TypeInt64:
+		n, err := strconv.ParseInt(token, 10, 64)
+		if err != nil {
+			return Value{}, fmt.Errorf("column %s expects INT, got %q", c.Name, token)
+		}
+		v.Int = n
+	case TypeBool:
+		switch strings.ToLower(token) {
+		case "true", "1", "yes":
+			v.Bool = true
+		case "false", "0", "no":
+			v.Bool = false
+		default:
+			return Value{}, fmt.Errorf("column %s expects BOOL, got %q", c.Name, token)
+		}
+	case TypeText:
+		if len([]byte(token)) &gt; int(c.MaxLen) {
+			return Value{}, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+		}
+		v.Text = token
+	default:
+		return Value{}, fmt.Errorf("column %s has unsupported type %d", c.Name, c.Type)
+	}
+	return v, nil
+}
+
+func setNullBit(buf []byte, index int) {
+	byteIndex := 16 + index/8
+	bit := uint(index % 8)
+	buf[byteIndex] |= 1 &lt;&lt; bit
+}
+
+func nullBit(buf []byte, index int) bool {
+	byteIndex := 16 + index/8
+	bit := uint(index % 8)
+	return buf[byteIndex]&amp;(1&lt;&lt;bit) != 0
+}
+
+func EncodeRow(schema Schema, rowID int64, values []Value) ([]byte, error) {
+	if len(values) != len(schema.Columns) {
+		return nil, fmt.Errorf("expected %d values, got %d", len(schema.Columns), len(values))
+	}
+	buf := make([]byte, schema.RowSize)
+	binary.LittleEndian.PutUint64(buf[8:16], uint64(rowID))
+	for i, c := range schema.Columns {
+		v := values[i]
+		if v.Null {
+			if !c.Nullable {
+				return nil, fmt.Errorf("column %s is NOT NULL", c.Name)
+			}
+			setNullBit(buf, i)
+			continue
+		}
+		if v.Type != c.Type {
+			return nil, fmt.Errorf("column %s type mismatch", c.Name)
+		}
+		off := int(c.Offset)
+		switch c.Type {
+		case TypeInt64:
+			binary.LittleEndian.PutUint64(buf[off:off+8], uint64(v.Int))
+		case TypeBool:
+			if v.Bool {
+				buf[off] = 1
+			}
+		case TypeText:
+			raw := []byte(v.Text)
+			if len(raw) &gt; int(c.MaxLen) {
+				return nil, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+			}
+			binary.LittleEndian.PutUint16(buf[off:off+2], uint16(len(raw)))
+			copy(buf[off+2:off+2+len(raw)], raw)
+		}
+	}
+	return buf, nil
+}
+
+func DecodeRow(schema Schema, buf []byte) (Row, error) {
+	if len(buf) != int(schema.RowSize) {
+		return Row{}, fmt.Errorf("decode row: expected %d bytes, got %d", schema.RowSize, len(buf))
+	}
+	row := Row{
+		RowID:   int64(binary.LittleEndian.Uint64(buf[8:16])),
+		Deleted: buf[0]&amp;1 != 0,
+		Values:  make([]Value, len(schema.Columns)),
+	}
+	for i, c := range schema.Columns {
+		v := Value{Type: c.Type}
+		if nullBit(buf, i) {
+			v.Null = true
+			row.Values[i] = v
+			continue
+		}
+		off := int(c.Offset)
+		switch c.Type {
+		case TypeInt64:
+			v.Int = int64(binary.LittleEndian.Uint64(buf[off : off+8]))
+		case TypeBool:
+			v.Bool = buf[off] != 0
+		case TypeText:
+			n := int(binary.LittleEndian.Uint16(buf[off : off+2]))
+			if n &gt; int(c.MaxLen) {
+				return Row{}, fmt.Errorf("column %s has invalid text length %d", c.Name, n)
+			}
+			v.Text = string(buf[off+2 : off+2+n])
+		default:
+			return Row{}, fmt.Errorf("column %s has unsupported type %d", c.Name, c.Type)
+		}
+		row.Values[i] = v
+	}
+	return row, nil
+}
+
+func FormatValue(v Value) string {
+	if v.Null {
+		return "NULL"
+	}
+	switch v.Type {
+	case TypeInt64:
+		return strconv.FormatInt(v.Int, 10)
+	case TypeBool:
+		return strconv.FormatBool(v.Bool)
+	case TypeText:
+		return v.Text
+	default:
+		return "&lt;?&gt;"
+	}
+}</code></pre><h3>btree.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+// BTreeMaxKeys is intentionally tiny so a learner can trigger splits with a
+// handful of INSERTs. A production page would use far more of its 4096 bytes.
+const BTreeMaxKeys = 7
+
+const (
+	nodeKeyCountOffset = PageHeaderSize
+	nodeSpecialOffset  = 40 // leaf: next leaf; internal: first child
+	nodeEntriesOffset  = 48
+	leafEntrySize      = 24
+	internalEntrySize  = 16
+)
+
+type RecordPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type leafEntry struct {
+	Key int64
+	Ptr RecordPointer
+}
+
+type internalEntry struct {
+	Key        int64
+	RightChild uint64
+}
+
+type splitResult struct {
+	Separator int64
+	RightPage uint64
+}
+
+type BTree struct {
+	pager *Pager
+	root  uint64
+}
+
+func newBTree(pager *Pager, root uint64) *BTree { return &amp;BTree{pager: pager, root: root} }
+func (t *BTree) RootPage() uint64               { return t.root }
+
+func keyCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[nodeKeyCountOffset : nodeKeyCountOffset+2]))
+}
+
+func setKeyCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[nodeKeyCountOffset:nodeKeyCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func leafNext(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setLeafNext(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+func internalFirstChild(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setInternalFirstChild(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+
+func readLeafEntries(page *Page) []leafEntry {
+	n := keyCount(page)
+	out := make([]leafEntry, 0, n)
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*leafEntrySize
+		out = append(out, leafEntry{
+			Key: int64(binary.LittleEndian.Uint64(page.Data[off : off+8])),
+			Ptr: RecordPointer{Page: binary.LittleEndian.Uint64(page.Data[off+8 : off+16]), Slot: binary.LittleEndian.Uint16(page.Data[off+16 : off+18])},
+		})
+	}
+	return out
+}
+
+func writeLeafEntries(page *Page, entries []leafEntry) error {
+	if len(entries) &gt; BTreeMaxKeys {
+		return fmt.Errorf("leaf page %d overflow: %d keys", page.Number, len(entries))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	for i, e := range entries {
+		off := nodeEntriesOffset + i*leafEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(e.Key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], e.Ptr.Page)
+		binary.LittleEndian.PutUint16(page.Data[off+16:off+18], e.Ptr.Slot)
+	}
+	setKeyCount(page, len(entries))
+	page.MarkDirty()
+	return nil
+}
+
+func readInternal(page *Page) ([]int64, []uint64) {
+	n := keyCount(page)
+	keys := make([]int64, 0, n)
+	children := make([]uint64, 0, n+1)
+	children = append(children, internalFirstChild(page))
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*internalEntrySize
+		keys = append(keys, int64(binary.LittleEndian.Uint64(page.Data[off:off+8])))
+		children = append(children, binary.LittleEndian.Uint64(page.Data[off+8:off+16]))
+	}
+	return keys, children
+}
+
+func writeInternal(page *Page, keys []int64, children []uint64) error {
+	if len(keys) &gt; BTreeMaxKeys {
+		return fmt.Errorf("internal page %d overflow: %d keys", page.Number, len(keys))
+	}
+	if len(children) != len(keys)+1 {
+		return fmt.Errorf("internal page %d: %d keys need %d children, got %d", page.Number, len(keys), len(keys)+1, len(children))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	setInternalFirstChild(page, children[0])
+	for i, key := range keys {
+		off := nodeEntriesOffset + i*internalEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], children[i+1])
+	}
+	setKeyCount(page, len(keys))
+	page.MarkDirty()
+	return nil
+}
+
+func (t *BTree) Lookup(key int64) (RecordPointer, int, error) {
+	pageNum := t.root
+	visits := 0
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return RecordPointer{}, visits, err
+		}
+		visits++
+		switch page.Type {
+		case PageTypeBTreeLeaf:
+			entries := readLeafEntries(page)
+			lo, hi := 0, len(entries)
+			for lo &lt; hi {
+				mid := lo + (hi-lo)/2
+				if entries[mid].Key &lt; key {
+					lo = mid + 1
+				} else {
+					hi = mid
+				}
+			}
+			if lo &lt; len(entries) &amp;&amp; entries[lo].Key == key {
+				return entries[lo].Ptr, visits, nil
+			}
+			return RecordPointer{}, visits, ErrNotFound
+		case PageTypeBTreeInternal:
+			keys, children := readInternal(page)
+			childIndex := 0
+			for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+				childIndex++
+			}
+			pageNum = children[childIndex]
+		default:
+			return RecordPointer{}, visits, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+	}
+}
+
+func (t *BTree) Insert(key int64, ptr RecordPointer) error {
+	if _, _, err := t.Lookup(key); err == nil {
+		return fmt.Errorf("duplicate index key %d", key)
+	} else if err != ErrNotFound {
+		return err
+	}
+	split, err := t.insertRecursive(t.root, key, ptr)
+	if err != nil {
+		return err
+	}
+	if split == nil {
+		return nil
+	}
+	oldRoot := t.root
+	newRoot, err := t.pager.NewPage(PageTypeBTreeInternal)
+	if err != nil {
+		return err
+	}
+	if err := writeInternal(newRoot, []int64{split.Separator}, []uint64{oldRoot, split.RightPage}); err != nil {
+		return err
+	}
+	t.root = newRoot.Number
+	return nil
+}
+
+func (t *BTree) insertRecursive(pageNum uint64, key int64, ptr RecordPointer) (*splitResult, error) {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return nil, err
+	}
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		return t.insertLeaf(page, key, ptr)
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		childIndex := 0
+		for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+			childIndex++
+		}
+		childSplit, err := t.insertRecursive(children[childIndex], key, ptr)
+		if err != nil || childSplit == nil {
+			return childSplit, err
+		}
+
+		keys = append(keys, 0)
+		copy(keys[childIndex+1:], keys[childIndex:])
+		keys[childIndex] = childSplit.Separator
+		children = append(children, 0)
+		copy(children[childIndex+2:], children[childIndex+1:])
+		children[childIndex+1] = childSplit.RightPage
+
+		if len(keys) &lt;= BTreeMaxKeys {
+			return nil, writeInternal(page, keys, children)
+		}
+
+		mid := len(keys) / 2
+		promoted := keys[mid]
+		leftKeys := append([]int64(nil), keys[:mid]...)
+		leftChildren := append([]uint64(nil), children[:mid+1]...)
+		rightKeys := append([]int64(nil), keys[mid+1:]...)
+		rightChildren := append([]uint64(nil), children[mid+1:]...)
+
+		if err := writeInternal(page, leftKeys, leftChildren); err != nil {
+			return nil, err
+		}
+		right, err := t.pager.NewPage(PageTypeBTreeInternal)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeInternal(right, rightKeys, rightChildren); err != nil {
+			return nil, err
+		}
+		return &amp;splitResult{Separator: promoted, RightPage: right.Number}, nil
+	default:
+		return nil, fmt.Errorf("btree insert: page %d has type %s", page.Number, page.Type)
+	}
+}
+
+func (t *BTree) insertLeaf(page *Page, key int64, ptr RecordPointer) (*splitResult, error) {
+	entries := readLeafEntries(page)
+	pos := 0
+	for pos &lt; len(entries) &amp;&amp; entries[pos].Key &lt; key {
+		pos++
+	}
+	if pos &lt; len(entries) &amp;&amp; entries[pos].Key == key {
+		return nil, fmt.Errorf("duplicate index key %d", key)
+	}
+	entries = append(entries, leafEntry{})
+	copy(entries[pos+1:], entries[pos:])
+	entries[pos] = leafEntry{Key: key, Ptr: ptr}
+	if len(entries) &lt;= BTreeMaxKeys {
+		return nil, writeLeafEntries(page, entries)
+	}
+
+	mid := len(entries) / 2
+	leftEntries := append([]leafEntry(nil), entries[:mid]...)
+	rightEntries := append([]leafEntry(nil), entries[mid:]...)
+	oldNext := leafNext(page)
+	right, err := t.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(page, leftEntries); err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(right, rightEntries); err != nil {
+		return nil, err
+	}
+	setLeafNext(right, oldNext)
+	setLeafNext(page, right.Number)
+	return &amp;splitResult{Separator: rightEntries[0].Key, RightPage: right.Number}, nil
+}
+
+func (t *BTree) leftmostLeaf() (uint64, error) {
+	pageNum := t.root
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return 0, err
+		}
+		if page.Type == PageTypeBTreeLeaf {
+			return pageNum, nil
+		}
+		if page.Type != PageTypeBTreeInternal {
+			return 0, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+		pageNum = internalFirstChild(page)
+	}
+}
+
+func (t *BTree) AllPointers() ([]RecordPointer, error) {
+	pageNum, err := t.leftmostLeaf()
+	if err != nil {
+		return nil, err
+	}
+	var out []RecordPointer
+	for pageNum != 0 {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeBTreeLeaf {
+			return nil, fmt.Errorf("btree scan: page %d is %s", pageNum, page.Type)
+		}
+		for _, e := range readLeafEntries(page) {
+			out = append(out, e.Ptr)
+		}
+		pageNum = leafNext(page)
+	}
+	return out, nil
+}
+
+func (t *BTree) Dump() (string, error) {
+	var b strings.Builder
+	if err := t.dumpPage(&amp;b, t.root, 0); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+func (t *BTree) dumpPage(b *strings.Builder, pageNum uint64, depth int) error {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return err
+	}
+	indent := strings.Repeat("  ", depth)
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		entries := readLeafEntries(page)
+		fmt.Fprintf(b, "%sleaf page=%d keys=[", indent, pageNum)
+		for i, e := range entries {
+			if i &gt; 0 {
+				b.WriteString(" ")
+			}
+			fmt.Fprintf(b, "%d", e.Key)
+		}
+		fmt.Fprintf(b, "] next=%d\n", leafNext(page))
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		fmt.Fprintf(b, "%sinternal page=%d keys=%v children=%v\n", indent, pageNum, keys, children)
+		for _, child := range children {
+			if err := t.dumpPage(b, child, depth+1); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("tree dump: page %d has type %s", pageNum, page.Type)
+	}
+	return nil
+}</code></pre><h3>catalog.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+const (
+	MaxTableNameLen = 32
+
+	catalogSlotCountOffset = PageHeaderSize
+	catalogNextPageOffset  = 40
+	catalogEntriesOffset   = 64
+	CatalogEntrySize       = 512
+	CatalogSlotsPerPage    = (PageSize - catalogEntriesOffset) / CatalogEntrySize
+
+	catalogActiveOffset    = 0
+	catalogNameLenOffset   = 1
+	catalogColumnCountOff  = 2
+	catalogRowSizeOffset   = 4
+	catalogTableIDOffset   = 8
+	catalogRootPageOffset  = 16
+	catalogFirstDataOffset = 24
+	catalogLastDataOffset  = 32
+	catalogNextRowIDOffset = 40
+	catalogNameOffset      = 48
+	catalogColumnsOffset   = 80
+
+	catalogColumnSize       = 40
+	catalogColTypeOffset    = 0
+	catalogColNullableOff   = 1
+	catalogColNameLenOffset = 2
+	catalogColMaxLenOffset  = 4
+	catalogColRowOffOffset  = 6
+	catalogColWidthOffset   = 8
+	catalogColNameOffset    = 16
+)
+
+type CatalogPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type Table struct {
+	ID        uint64
+	Name      string
+	Schema    Schema
+	tree      *BTree
+	firstData uint64
+	lastData  uint64
+	nextRowID int64
+	catalog   CatalogPointer
+}
+
+func catalogSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[catalogSlotCountOffset : catalogSlotCountOffset+2]))
+}
+
+func setCatalogSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[catalogSlotCountOffset:catalogSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func catalogNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[catalogNextPageOffset : catalogNextPageOffset+8])
+}
+
+func setCatalogNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[catalogNextPageOffset:catalogNextPageOffset+8], n)
+	page.MarkDirty()
+}
+
+func catalogEntryRange(slot int) (int, int, error) {
+	if slot &lt; 0 || slot &gt;= CatalogSlotsPerPage {
+		return 0, 0, fmt.Errorf("catalog slot %d out of range", slot)
+	}
+	start := catalogEntriesOffset + slot*CatalogEntrySize
+	return start, start + CatalogEntrySize, nil
+}
+
+func writeCatalogEntry(page *Page, slot int, t *Table) error {
+	if page.Type != PageTypeCatalog {
+		return fmt.Errorf("page %d is %s, expected catalog", page.Number, page.Type)
+	}
+	if len([]byte(t.Name)) == 0 || len([]byte(t.Name)) &gt; MaxTableNameLen {
+		return fmt.Errorf("table name must be 1..%d bytes", MaxTableNameLen)
+	}
+	if len(t.Schema.Columns) &gt; MaxColumns {
+		return fmt.Errorf("table %s has too many columns", t.Name)
+	}
+	start, end, err := catalogEntryRange(slot)
+	if err != nil {
+		return err
+	}
+	entry := page.Data[start:end]
+	clear(entry)
+	entry[catalogActiveOffset] = 1
+	entry[catalogNameLenOffset] = byte(len([]byte(t.Name)))
+	entry[catalogColumnCountOff] = byte(len(t.Schema.Columns))
+	binary.LittleEndian.PutUint32(entry[catalogRowSizeOffset:catalogRowSizeOffset+4], t.Schema.RowSize)
+	binary.LittleEndian.PutUint64(entry[catalogTableIDOffset:catalogTableIDOffset+8], t.ID)
+	binary.LittleEndian.PutUint64(entry[catalogRootPageOffset:catalogRootPageOffset+8], t.tree.RootPage())
+	binary.LittleEndian.PutUint64(entry[catalogFirstDataOffset:catalogFirstDataOffset+8], t.firstData)
+	binary.LittleEndian.PutUint64(entry[catalogLastDataOffset:catalogLastDataOffset+8], t.lastData)
+	binary.LittleEndian.PutUint64(entry[catalogNextRowIDOffset:catalogNextRowIDOffset+8], uint64(t.nextRowID))
+	copy(entry[catalogNameOffset:catalogNameOffset+MaxTableNameLen], []byte(t.Name))
+
+	for i, c := range t.Schema.Columns {
+		off := catalogColumnsOffset + i*catalogColumnSize
+		col := entry[off : off+catalogColumnSize]
+		col[catalogColTypeOffset] = byte(c.Type)
+		if c.Nullable {
+			col[catalogColNullableOff] = 1
+		}
+		col[catalogColNameLenOffset] = byte(len([]byte(c.Name)))
+		binary.LittleEndian.PutUint16(col[catalogColMaxLenOffset:catalogColMaxLenOffset+2], c.MaxLen)
+		binary.LittleEndian.PutUint16(col[catalogColRowOffOffset:catalogColRowOffOffset+2], c.Offset)
+		binary.LittleEndian.PutUint16(col[catalogColWidthOffset:catalogColWidthOffset+2], c.Width)
+		copy(col[catalogColNameOffset:catalogColNameOffset+MaxColumnNameLen], []byte(c.Name))
+	}
+	page.MarkDirty()
+	return nil
+}
+
+func readCatalogEntry(page *Page, slot int) (*Table, error) {
+	start, end, err := catalogEntryRange(slot)
+	if err != nil {
+		return nil, err
+	}
+	entry := page.Data[start:end]
+	if entry[catalogActiveOffset] == 0 {
+		return nil, nil
+	}
+	nameLen := int(entry[catalogNameLenOffset])
+	if nameLen &lt; 1 || nameLen &gt; MaxTableNameLen {
+		return nil, fmt.Errorf("catalog page %d slot %d has invalid table-name length %d", page.Number, slot, nameLen)
+	}
+	columnCount := int(entry[catalogColumnCountOff])
+	if columnCount &lt; 1 || columnCount &gt; MaxColumns {
+		return nil, fmt.Errorf("catalog page %d slot %d has invalid column count %d", page.Number, slot, columnCount)
+	}
+	name := string(entry[catalogNameOffset : catalogNameOffset+nameLen])
+	columns := make([]Column, 0, columnCount)
+	for i := 0; i &lt; columnCount; i++ {
+		off := catalogColumnsOffset + i*catalogColumnSize
+		col := entry[off : off+catalogColumnSize]
+		colNameLen := int(col[catalogColNameLenOffset])
+		if colNameLen &lt; 1 || colNameLen &gt; MaxColumnNameLen {
+			return nil, fmt.Errorf("catalog table %s column %d has invalid name length %d", name, i, colNameLen)
+		}
+		c := Column{
+			Name:     string(col[catalogColNameOffset : catalogColNameOffset+colNameLen]),
+			Type:     ColumnType(col[catalogColTypeOffset]),
+			Nullable: col[catalogColNullableOff] != 0,
+			MaxLen:   binary.LittleEndian.Uint16(col[catalogColMaxLenOffset : catalogColMaxLenOffset+2]),
+			Offset:   binary.LittleEndian.Uint16(col[catalogColRowOffOffset : catalogColRowOffOffset+2]),
+			Width:    binary.LittleEndian.Uint16(col[catalogColWidthOffset : catalogColWidthOffset+2]),
+		}
+		if _, err := columnWidth(c); err != nil {
+			return nil, fmt.Errorf("catalog table %s column %s: %w", name, c.Name, err)
+		}
+		columns = append(columns, c)
+	}
+	schema := Schema{Columns: columns, RowSize: binary.LittleEndian.Uint32(entry[catalogRowSizeOffset : catalogRowSizeOffset+4])}
+	compiled, err := CompileSchema(columns)
+	if err != nil {
+		return nil, fmt.Errorf("catalog table %s schema invalid: %w", name, err)
+	}
+	if compiled.RowSize != schema.RowSize {
+		return nil, fmt.Errorf("catalog table %s row size %d does not match compiled size %d", name, schema.RowSize, compiled.RowSize)
+	}
+	for i := range compiled.Columns {
+		if compiled.Columns[i].Offset != schema.Columns[i].Offset || compiled.Columns[i].Width != schema.Columns[i].Width {
+			return nil, fmt.Errorf("catalog table %s column %s layout mismatch", name, schema.Columns[i].Name)
+		}
+	}
+	t := &amp;Table{
+		ID:        binary.LittleEndian.Uint64(entry[catalogTableIDOffset : catalogTableIDOffset+8]),
+		Name:      name,
+		Schema:    schema,
+		firstData: binary.LittleEndian.Uint64(entry[catalogFirstDataOffset : catalogFirstDataOffset+8]),
+		lastData:  binary.LittleEndian.Uint64(entry[catalogLastDataOffset : catalogLastDataOffset+8]),
+		nextRowID: int64(binary.LittleEndian.Uint64(entry[catalogNextRowIDOffset : catalogNextRowIDOffset+8])),
+		catalog:   CatalogPointer{Page: page.Number, Slot: uint16(slot)},
+	}
+	root := binary.LittleEndian.Uint64(entry[catalogRootPageOffset : catalogRootPageOffset+8])
+	if t.ID == 0 || root == 0 || t.nextRowID &lt; 1 {
+		return nil, fmt.Errorf("catalog table %s has invalid id/root/next-rowid", name)
+	}
+	if (t.firstData == 0) != (t.lastData == 0) {
+		return nil, fmt.Errorf("catalog table %s data chain metadata disagrees", name)
+	}
+	t.tree = newBTree(nil, root) // pager is attached by Store after catalog loading.
+	return t, nil
+}
+
+func normalizeTableName(name string) string { return strings.ToLower(name) }</code></pre><h3>index.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/fnv"
+	"sort"
+	"strings"
+)
+
+const (
+	MaxIndexNameLen = 32
+
+	indexCatalogCountOffset  = PageHeaderSize
+	indexCatalogNextOffset   = 40
+	indexCatalogEntriesOff   = 64
+	IndexCatalogEntrySize    = 128
+	IndexCatalogSlotsPerPage = (PageSize - indexCatalogEntriesOff) / IndexCatalogEntrySize
+
+	idxActiveOff   = 0
+	idxNameLenOff  = 1
+	idxColumnOff   = 2
+	idxIDOff       = 8
+	idxTableIDOff  = 16
+	idxRootPageOff = 24
+	idxNameOff     = 32
+
+	bucketIndexIDOff = PageHeaderSize
+	bucketHashOff    = 40
+	bucketCountOff   = 48
+	bucketNextOff    = 56
+	bucketRowIDsOff  = 64
+	bucketCapacity   = (PageSize - bucketRowIDsOff) / 8
+)
+
+type IndexCatalogPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type SecondaryIndex struct {
+	ID          uint64
+	Name        string
+	TableID     uint64
+	ColumnIndex int
+	tree        *BTree
+	catalog     IndexCatalogPointer
+}
+
+func normalizeIndexName(s string) string { return strings.ToLower(s) }
+
+func initializeIndexCatalogPage(page *Page) error {
+	if page.Type != PageTypeIndexCatalog {
+		return fmt.Errorf("page %d is %s, expected index-catalog", page.Number, page.Type)
+	}
+	binary.LittleEndian.PutUint16(page.Data[indexCatalogCountOffset:indexCatalogCountOffset+2], 0)
+	binary.LittleEndian.PutUint64(page.Data[indexCatalogNextOffset:indexCatalogNextOffset+8], 0)
+	page.MarkDirty()
+	return nil
+}
+func indexCatalogCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[indexCatalogCountOffset : indexCatalogCountOffset+2]))
+}
+func setIndexCatalogCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[indexCatalogCountOffset:indexCatalogCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+func indexCatalogNext(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[indexCatalogNextOffset : indexCatalogNextOffset+8])
+}
+func setIndexCatalogNext(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[indexCatalogNextOffset:indexCatalogNextOffset+8], n)
+	page.MarkDirty()
+}
+
+func writeIndexCatalogEntry(page *Page, slot int, idx *SecondaryIndex) error {
+	if page.Type != PageTypeIndexCatalog {
+		return fmt.Errorf("page %d is %s, expected index-catalog", page.Number, page.Type)
+	}
+	if slot &lt; 0 || slot &gt;= IndexCatalogSlotsPerPage {
+		return fmt.Errorf("index catalog slot %d out of range", slot)
+	}
+	if len([]byte(idx.Name)) &lt; 1 || len([]byte(idx.Name)) &gt; MaxIndexNameLen {
+		return fmt.Errorf("index name must be 1..%d bytes", MaxIndexNameLen)
+	}
+	start := indexCatalogEntriesOff + slot*IndexCatalogEntrySize
+	entry := page.Data[start : start+IndexCatalogEntrySize]
+	clear(entry)
+	entry[idxActiveOff] = 1
+	entry[idxNameLenOff] = byte(len([]byte(idx.Name)))
+	binary.LittleEndian.PutUint16(entry[idxColumnOff:idxColumnOff+2], uint16(idx.ColumnIndex))
+	binary.LittleEndian.PutUint64(entry[idxIDOff:idxIDOff+8], idx.ID)
+	binary.LittleEndian.PutUint64(entry[idxTableIDOff:idxTableIDOff+8], idx.TableID)
+	binary.LittleEndian.PutUint64(entry[idxRootPageOff:idxRootPageOff+8], idx.tree.RootPage())
+	copy(entry[idxNameOff:idxNameOff+MaxIndexNameLen], []byte(idx.Name))
+	page.MarkDirty()
+	return nil
+}
+
+func readIndexCatalogEntry(page *Page, slot int) (*SecondaryIndex, error) {
+	if slot &lt; 0 || slot &gt;= IndexCatalogSlotsPerPage {
+		return nil, fmt.Errorf("index catalog slot %d out of range", slot)
+	}
+	start := indexCatalogEntriesOff + slot*IndexCatalogEntrySize
+	entry := page.Data[start : start+IndexCatalogEntrySize]
+	if entry[idxActiveOff] == 0 {
+		return nil, nil
+	}
+	nameLen := int(entry[idxNameLenOff])
+	if nameLen &lt; 1 || nameLen &gt; MaxIndexNameLen {
+		return nil, fmt.Errorf("index catalog page %d slot %d has invalid name length %d", page.Number, slot, nameLen)
+	}
+	idx := &amp;SecondaryIndex{
+		ID:          binary.LittleEndian.Uint64(entry[idxIDOff : idxIDOff+8]),
+		Name:        string(entry[idxNameOff : idxNameOff+nameLen]),
+		TableID:     binary.LittleEndian.Uint64(entry[idxTableIDOff : idxTableIDOff+8]),
+		ColumnIndex: int(binary.LittleEndian.Uint16(entry[idxColumnOff : idxColumnOff+2])),
+		catalog:     IndexCatalogPointer{Page: page.Number, Slot: uint16(slot)},
+	}
+	root := binary.LittleEndian.Uint64(entry[idxRootPageOff : idxRootPageOff+8])
+	if idx.ID == 0 || idx.TableID == 0 || root == 0 {
+		return nil, fmt.Errorf("index %s has invalid id/table/root", idx.Name)
+	}
+	idx.tree = newBTree(nil, root)
+	return idx, nil
+}
+
+func typedValueHash(v Value) (int64, error) {
+	if v.Null {
+		return 0, fmt.Errorf("NULL has no equality index key in Part 9")
+	}
+	h := fnv.New64a()
+	h.Write([]byte{byte(v.Type)})
+	var buf [8]byte
+	switch v.Type {
+	case TypeInt64:
+		binary.LittleEndian.PutUint64(buf[:], uint64(v.Int))
+		h.Write(buf[:])
+	case TypeBool:
+		if v.Bool {
+			h.Write([]byte{1})
+		} else {
+			h.Write([]byte{0})
+		}
+	case TypeText:
+		h.Write([]byte(v.Text))
+	default:
+		return 0, fmt.Errorf("unsupported index type %s", v.Type)
+	}
+	return int64(h.Sum64()), nil
+}
+
+func initializeIndexBucket(page *Page, indexID uint64, hash int64) error {
+	if page.Type != PageTypeIndexBucket {
+		return fmt.Errorf("page %d is %s, expected index-bucket", page.Number, page.Type)
+	}
+	binary.LittleEndian.PutUint64(page.Data[bucketIndexIDOff:bucketIndexIDOff+8], indexID)
+	binary.LittleEndian.PutUint64(page.Data[bucketHashOff:bucketHashOff+8], uint64(hash))
+	binary.LittleEndian.PutUint16(page.Data[bucketCountOff:bucketCountOff+2], 0)
+	binary.LittleEndian.PutUint64(page.Data[bucketNextOff:bucketNextOff+8], 0)
+	page.MarkDirty()
+	return nil
+}
+func bucketCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[bucketCountOff : bucketCountOff+2]))
+}
+func setBucketCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[bucketCountOff:bucketCountOff+2], uint16(n))
+	page.MarkDirty()
+}
+func bucketNext(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[bucketNextOff : bucketNextOff+8])
+}
+func setBucketNext(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[bucketNextOff:bucketNextOff+8], n)
+	page.MarkDirty()
+}
+func bucketRowID(page *Page, slot int) int64 {
+	off := bucketRowIDsOff + slot*8
+	return int64(binary.LittleEndian.Uint64(page.Data[off : off+8]))
+}
+func setBucketRowID(page *Page, slot int, id int64) {
+	off := bucketRowIDsOff + slot*8
+	binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(id))
+	page.MarkDirty()
+}
+
+func validateIndexBucket(page *Page, idx *SecondaryIndex, hash int64) error {
+	if page.Type != PageTypeIndexBucket {
+		return fmt.Errorf("page %d is %s, expected index-bucket", page.Number, page.Type)
+	}
+	if got := binary.LittleEndian.Uint64(page.Data[bucketIndexIDOff : bucketIndexIDOff+8]); got != idx.ID {
+		return fmt.Errorf("bucket page %d belongs to index %d, expected %d", page.Number, got, idx.ID)
+	}
+	if got := int64(binary.LittleEndian.Uint64(page.Data[bucketHashOff : bucketHashOff+8])); got != hash {
+		return fmt.Errorf("bucket page %d hash mismatch", page.Number)
+	}
+	if n := bucketCount(page); n &lt; 0 || n &gt; bucketCapacity {
+		return fmt.Errorf("bucket page %d invalid count %d", page.Number, n)
+	}
+	return nil
+}
+
+func (s *Store) persistIndex(idx *SecondaryIndex) error {
+	p, err := s.pager.GetPage(idx.catalog.Page)
+	if err != nil {
+		return err
+	}
+	return writeIndexCatalogEntry(p, int(idx.catalog.Slot), idx)
+}
+
+func (s *Store) loadIndexes() error {
+	if s.firstIndexCatalogPage == 0 {
+		if s.nextIndexID == 0 {
+			s.nextIndexID = 1
+		}
+		return nil
+	}
+	seen := map[uint64]bool{}
+	byID := map[uint64]bool{}
+	pageNum := s.firstIndexCatalogPage
+	var last uint64
+	loaded := uint64(0)
+	for pageNum != 0 {
+		if seen[pageNum] {
+			return fmt.Errorf("index catalog cycle at %d", pageNum)
+		}
+		seen[pageNum] = true
+		p, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return err
+		}
+		if p.Type != PageTypeIndexCatalog {
+			return fmt.Errorf("index catalog page %d is %s", pageNum, p.Type)
+		}
+		n := indexCatalogCount(p)
+		if n &lt; 0 || n &gt; IndexCatalogSlotsPerPage {
+			return fmt.Errorf("index catalog page %d invalid count %d", pageNum, n)
+		}
+		for slot := 0; slot &lt; n; slot++ {
+			idx, err := readIndexCatalogEntry(p, slot)
+			if err != nil {
+				return err
+			}
+			if idx == nil {
+				return fmt.Errorf("index catalog page %d slot %d unexpectedly empty", pageNum, slot)
+			}
+			if _, ok := s.tableByID(idx.TableID); !ok {
+				return fmt.Errorf("index %s refers to missing table id %d", idx.Name, idx.TableID)
+			}
+			t, _ := s.tableByID(idx.TableID)
+			if idx.ColumnIndex &lt; 0 || idx.ColumnIndex &gt;= len(t.Schema.Columns) {
+				return fmt.Errorf("index %s column %d out of range", idx.Name, idx.ColumnIndex)
+			}
+			key := normalizeIndexName(idx.Name)
+			if _, exists := s.indexes[key]; exists {
+				return fmt.Errorf("duplicate index name %q", idx.Name)
+			}
+			if byID[idx.ID] {
+				return fmt.Errorf("duplicate index id %d", idx.ID)
+			}
+			byID[idx.ID] = true
+			idx.tree.pager = s.pager
+			s.indexes[key] = idx
+			loaded++
+		}
+		last = pageNum
+		pageNum = indexCatalogNext(p)
+	}
+	if last != s.lastIndexCatalogPage {
+		return fmt.Errorf("index catalog last page metadata says %d but chain ends at %d", s.lastIndexCatalogPage, last)
+	}
+	if loaded != s.indexCount {
+		return fmt.Errorf("metadata says %d indexes but loaded %d", s.indexCount, loaded)
+	}
+	return nil
+}
+
+func (s *Store) tableByID(id uint64) (*Table, bool) {
+	for _, t := range s.tables {
+		if t.ID == id {
+			return t, true
+		}
+	}
+	return nil, false
+}
+
+func (s *Store) Index(name string) (*SecondaryIndex, error) {
+	idx, ok := s.indexes[normalizeIndexName(name)]
+	if !ok {
+		return nil, fmt.Errorf("index %q not found", name)
+	}
+	return idx, nil
+}
+
+func (s *Store) IndexesForTable(t *Table) []*SecondaryIndex {
+	var out []*SecondaryIndex
+	for _, idx := range s.indexes {
+		if idx.TableID == t.ID {
+			out = append(out, idx)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID &lt; out[j].ID })
+	return out
+}
+func (s *Store) Indexes() []*SecondaryIndex {
+	out := make([]*SecondaryIndex, 0, len(s.indexes))
+	for _, idx := range s.indexes {
+		out = append(out, idx)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID &lt; out[j].ID })
+	return out
+}
+func (s *Store) FindIndex(t *Table, columnIndex int) *SecondaryIndex {
+	for _, idx := range s.indexes {
+		if idx.TableID == t.ID &amp;&amp; idx.ColumnIndex == columnIndex {
+			return idx
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureIndexCatalogPage() (*Page, error) {
+	if s.lastIndexCatalogPage != 0 {
+		return s.pager.GetPage(s.lastIndexCatalogPage)
+	}
+	p, err := s.pager.NewPage(PageTypeIndexCatalog)
+	if err != nil {
+		return nil, err
+	}
+	if err := initializeIndexCatalogPage(p); err != nil {
+		return nil, err
+	}
+	s.firstIndexCatalogPage, s.lastIndexCatalogPage = p.Number, p.Number
+	if s.nextIndexID == 0 {
+		s.nextIndexID = 1
+	}
+	if err := s.persistMetadata(); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (s *Store) CreateIndex(name, tableName, columnName string) (*SecondaryIndex, error) {
+	if !validIdentifier(name) || len([]byte(name)) &gt; MaxIndexNameLen {
+		return nil, fmt.Errorf("index name must be a simple identifier of at most %d bytes", MaxIndexNameLen)
+	}
+	if _, exists := s.indexes[normalizeIndexName(name)]; exists {
+		return nil, fmt.Errorf("index %q already exists", name)
+	}
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	col := -1
+	for i, c := range t.Schema.Columns {
+		if strings.EqualFold(c.Name, columnName) {
+			col = i
+			break
+		}
+	}
+	if col &lt; 0 {
+		return nil, fmt.Errorf("column %q not found in table %s", columnName, t.Name)
+	}
+	if s.FindIndex(t, col) != nil {
+		return nil, fmt.Errorf("table %s already has an index on %s", t.Name, t.Schema.Columns[col].Name)
+	}
+
+	root, err := s.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	idx := &amp;SecondaryIndex{ID: s.nextIndexID, Name: name, TableID: t.ID, ColumnIndex: col, tree: newBTree(s.pager, root.Number)}
+	cat, err := s.ensureIndexCatalogPage()
+	if err != nil {
+		return nil, err
+	}
+	slot := indexCatalogCount(cat)
+	if slot &gt;= IndexCatalogSlotsPerPage {
+		n, err := s.pager.NewPage(PageTypeIndexCatalog)
+		if err != nil {
+			return nil, err
+		}
+		if err := initializeIndexCatalogPage(n); err != nil {
+			return nil, err
+		}
+		setIndexCatalogNext(cat, n.Number)
+		s.lastIndexCatalogPage = n.Number
+		cat = n
+		slot = 0
+	}
+	idx.catalog = IndexCatalogPointer{Page: cat.Number, Slot: uint16(slot)}
+	if err := writeIndexCatalogEntry(cat, slot, idx); err != nil {
+		return nil, err
+	}
+	setIndexCatalogCount(cat, slot+1)
+	s.indexes[normalizeIndexName(name)] = idx
+	s.nextIndexID++
+	s.indexCount++
+	if err := s.persistMetadata(); err != nil {
+		return nil, err
+	}
+
+	cur := NewTableScanCursor(s, t)
+	for {
+		row, ok, err := cur.Next()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
+		v := row.Values[col]
+		if v.Null {
+			continue
+		}
+		if err := s.addIndexRow(idx, v, row.RowID); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.persistIndex(idx); err != nil {
+		return nil, err
+	}
+	return idx, nil
+}
+
+func (s *Store) addIndexRow(idx *SecondaryIndex, v Value, rowID int64) error {
+	if v.Null {
+		return nil
+	}
+	hash, err := typedValueHash(v)
+	if err != nil {
+		return err
+	}
+	ptr, _, err := idx.tree.Lookup(hash)
+	if err == ErrNotFound {
+		b, err := s.pager.NewPage(PageTypeIndexBucket)
+		if err != nil {
+			return err
+		}
+		if err := initializeIndexBucket(b, idx.ID, hash); err != nil {
+			return err
+		}
+		setBucketRowID(b, 0, rowID)
+		setBucketCount(b, 1)
+		return idx.tree.Insert(hash, RecordPointer{Page: b.Number, Slot: 0})
+	}
+	if err != nil {
+		return err
+	}
+	pageNum := ptr.Page
+	for {
+		p, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return err
+		}
+		if err := validateIndexBucket(p, idx, hash); err != nil {
+			return err
+		}
+		n := bucketCount(p)
+		for i := 0; i &lt; n; i++ {
+			if bucketRowID(p, i) == 0 {
+				setBucketRowID(p, i, rowID)
+				return nil
+			}
+		}
+		if n &lt; bucketCapacity {
+			setBucketRowID(p, n, rowID)
+			setBucketCount(p, n+1)
+			return nil
+		}
+		if next := bucketNext(p); next != 0 {
+			pageNum = next
+			continue
+		}
+		q, err := s.pager.NewPage(PageTypeIndexBucket)
+		if err != nil {
+			return err
+		}
+		if err := initializeIndexBucket(q, idx.ID, hash); err != nil {
+			return err
+		}
+		setBucketRowID(q, 0, rowID)
+		setBucketCount(q, 1)
+		setBucketNext(p, q.Number)
+		return nil
+	}
+}
+
+func (s *Store) removeIndexRow(idx *SecondaryIndex, v Value, rowID int64) error {
+	if v.Null {
+		return nil
+	}
+	hash, err := typedValueHash(v)
+	if err != nil {
+		return err
+	}
+	ptr, _, err := idx.tree.Lookup(hash)
+	if err == ErrNotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for pageNum := ptr.Page; pageNum != 0; {
+		p, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return err
+		}
+		if err := validateIndexBucket(p, idx, hash); err != nil {
+			return err
+		}
+		n := bucketCount(p)
+		for i := 0; i &lt; n; i++ {
+			if bucketRowID(p, i) == rowID {
+				setBucketRowID(p, i, 0)
+				return nil
+			}
+		}
+		pageNum = bucketNext(p)
+	}
+	return nil
+}
+
+func (s *Store) SecondaryCandidates(idx *SecondaryIndex, v Value) ([]int64, error) {
+	if v.Null {
+		return nil, nil
+	}
+	hash, err := typedValueHash(v)
+	if err != nil {
+		return nil, err
+	}
+	ptr, _, err := idx.tree.Lookup(hash)
+	if err == ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []int64
+	for pageNum := ptr.Page; pageNum != 0; {
+		p, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateIndexBucket(p, idx, hash); err != nil {
+			return nil, err
+		}
+		n := bucketCount(p)
+		for i := 0; i &lt; n; i++ {
+			if id := bucketRowID(p, i); id != 0 {
+				out = append(out, id)
+			}
+		}
+		pageNum = bucketNext(p)
+	}
+	return out, nil
+}
+
+func (s *Store) IndexDump(name string) (string, error) {
+	idx, err := s.Index(name)
+	if err != nil {
+		return "", err
+	}
+	return idx.tree.Dump()
+}
+func (s *Store) IndexBucketPages(name string) ([]uint64, error) {
+	idx, err := s.Index(name)
+	if err != nil {
+		return nil, err
+	}
+	ptrs, err := idx.tree.AllPointers()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[uint64]bool{}
+	var out []uint64
+	for _, ptr := range ptrs {
+		for p := ptr.Page; p != 0; {
+			if seen[p] {
+				break
+			}
+			seen[p] = true
+			out = append(out, p)
+			pg, err := s.pager.GetPage(p)
+			if err != nil {
+				return nil, err
+			}
+			p = bucketNext(pg)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] &lt; out[j] })
+	return out, nil
+}</code></pre><h3>store.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+const (
+	DatabaseMagic   = "MINIDB05"
+	DatabaseVersion = uint32(5)
+	HeaderPage      = uint64(0)
+
+	metaMagicOffset             = PageHeaderSize
+	metaVersionOffset           = metaMagicOffset + 8
+	metaPageSizeOffset          = metaVersionOffset + 4
+	metaPageHeaderSizeOffset    = metaPageSizeOffset + 4
+	metaChecksumAlgOffset       = metaPageHeaderSizeOffset + 4
+	metaFirstCatalogOffset      = 64
+	metaLastCatalogOffset       = 72
+	metaNextTableIDOffset       = 80
+	metaTableCountOffset        = 88
+	metaFirstIndexCatalogOffset = 96
+	metaLastIndexCatalogOffset  = 104
+	metaNextIndexIDOffset       = 112
+	metaIndexCountOffset        = 120
+
+	dataTableIDOffset   = PageHeaderSize
+	dataSlotCountOffset = 40
+	dataRowSizeOffset   = 44
+	dataNextPageOffset  = 48
+	dataRowsOffset      = 64
+)
+
+var (
+	ErrNotFound = errors.New("record not found")
+	ErrDeleted  = errors.New("record deleted")
+)
+
+type Store struct {
+	pager                 *Pager
+	tables                map[string]*Table
+	firstCatalogPage      uint64
+	lastCatalogPage       uint64
+	nextTableID           uint64
+	tableCount            uint64
+	indexes               map[string]*SecondaryIndex
+	firstIndexCatalogPage uint64
+	lastIndexCatalogPage  uint64
+	nextIndexID           uint64
+	indexCount            uint64
+}
+
+func writeDatabaseMetadata(page *Page, firstCatalog, lastCatalog, nextTableID, tableCount, firstIndexCatalog, lastIndexCatalog, nextIndexID, indexCount uint64) {
+	clear(page.Data[PageHeaderSize:])
+	copy(page.Data[metaMagicOffset:metaMagicOffset+8], []byte(DatabaseMagic))
+	binary.LittleEndian.PutUint32(page.Data[metaVersionOffset:metaVersionOffset+4], DatabaseVersion)
+	binary.LittleEndian.PutUint32(page.Data[metaPageSizeOffset:metaPageSizeOffset+4], PageSize)
+	binary.LittleEndian.PutUint32(page.Data[metaPageHeaderSizeOffset:metaPageHeaderSizeOffset+4], PageHeaderSize)
+	binary.LittleEndian.PutUint32(page.Data[metaChecksumAlgOffset:metaChecksumAlgOffset+4], ChecksumAlgorithm)
+	binary.LittleEndian.PutUint64(page.Data[metaFirstCatalogOffset:metaFirstCatalogOffset+8], firstCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaLastCatalogOffset:metaLastCatalogOffset+8], lastCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaNextTableIDOffset:metaNextTableIDOffset+8], nextTableID)
+	binary.LittleEndian.PutUint64(page.Data[metaTableCountOffset:metaTableCountOffset+8], tableCount)
+	binary.LittleEndian.PutUint64(page.Data[metaFirstIndexCatalogOffset:metaFirstIndexCatalogOffset+8], firstIndexCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaLastIndexCatalogOffset:metaLastIndexCatalogOffset+8], lastIndexCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaNextIndexIDOffset:metaNextIndexIDOffset+8], nextIndexID)
+	binary.LittleEndian.PutUint64(page.Data[metaIndexCountOffset:metaIndexCountOffset+8], indexCount)
+	page.MarkDirty()
+}
+
+func readDatabaseMetadata(page *Page) (firstCatalog, lastCatalog, nextTableID, tableCount, firstIndexCatalog, lastIndexCatalog, nextIndexID, indexCount uint64, err error) {
+	if page.Type != PageTypeMetadata {
+		err = fmt.Errorf("page 0 is %s, expected metadata", page.Type)
+		return
+	}
+	if string(page.Data[metaMagicOffset:metaMagicOffset+8]) != DatabaseMagic {
+		err = fmt.Errorf("not a compatible MiniDB file: bad database magic")
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaVersionOffset : metaVersionOffset+4]); got != DatabaseVersion {
+		err = fmt.Errorf("unsupported database version %d", got)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageSizeOffset : metaPageSizeOffset+4]); got != PageSize {
+		err = fmt.Errorf("file page size is %d, program expects %d", got, PageSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageHeaderSizeOffset : metaPageHeaderSizeOffset+4]); got != PageHeaderSize {
+		err = fmt.Errorf("file page-header size is %d, program expects %d", got, PageHeaderSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaChecksumAlgOffset : metaChecksumAlgOffset+4]); got != ChecksumAlgorithm {
+		err = fmt.Errorf("unsupported checksum algorithm %d", got)
+		return
+	}
+	firstCatalog = binary.LittleEndian.Uint64(page.Data[metaFirstCatalogOffset : metaFirstCatalogOffset+8])
+	lastCatalog = binary.LittleEndian.Uint64(page.Data[metaLastCatalogOffset : metaLastCatalogOffset+8])
+	nextTableID = binary.LittleEndian.Uint64(page.Data[metaNextTableIDOffset : metaNextTableIDOffset+8])
+	tableCount = binary.LittleEndian.Uint64(page.Data[metaTableCountOffset : metaTableCountOffset+8])
+	firstIndexCatalog = binary.LittleEndian.Uint64(page.Data[metaFirstIndexCatalogOffset : metaFirstIndexCatalogOffset+8])
+	lastIndexCatalog = binary.LittleEndian.Uint64(page.Data[metaLastIndexCatalogOffset : metaLastIndexCatalogOffset+8])
+	nextIndexID = binary.LittleEndian.Uint64(page.Data[metaNextIndexIDOffset : metaNextIndexIDOffset+8])
+	indexCount = binary.LittleEndian.Uint64(page.Data[metaIndexCountOffset : metaIndexCountOffset+8])
+	if nextIndexID == 0 {
+		nextIndexID = 1
+	}
+	if (firstIndexCatalog == 0) != (lastIndexCatalog == 0) {
+		err = fmt.Errorf("invalid index catalog metadata: first=%d last=%d", firstIndexCatalog, lastIndexCatalog)
+		return
+	}
+	if firstCatalog == 0 || lastCatalog == 0 || nextTableID == 0 {
+		err = fmt.Errorf("invalid catalog metadata: first=%d last=%d nextTableID=%d", firstCatalog, lastCatalog, nextTableID)
+	}
+	return
+}
+
+func initializeCatalogPage(page *Page) error {
+	if page.Type != PageTypeCatalog {
+		return fmt.Errorf("page %d is %s, expected catalog", page.Number, page.Type)
+	}
+	setCatalogSlotCount(page, 0)
+	setCatalogNextPage(page, 0)
+	return nil
+}
+
+func Open(path string) (*Store, error) {
+	pager, err := OpenPager(path)
+	if err != nil {
+		return nil, err
+	}
+	s := &amp;Store{pager: pager, tables: make(map[string]*Table), indexes: make(map[string]*SecondaryIndex), nextIndexID: 1}
+
+	if pager.numPages == 0 {
+		meta, err := pager.NewPage(PageTypeMetadata)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		if meta.Number != HeaderPage {
+			pager.Close()
+			return nil, fmt.Errorf("new metadata page is %d, expected 0", meta.Number)
+		}
+		catalog, err := pager.NewPage(PageTypeCatalog)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		if err := initializeCatalogPage(catalog); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		s.firstCatalogPage = catalog.Number
+		s.lastCatalogPage = catalog.Number
+		s.nextTableID = 1
+		s.tableCount = 0
+		writeDatabaseMetadata(meta, s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount, s.firstIndexCatalogPage, s.lastIndexCatalogPage, s.nextIndexID, s.indexCount)
+		if err := pager.FlushAll(); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		return s, nil
+	}
+
+	meta, err := pager.GetPage(HeaderPage)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	first, last, nextID, count, firstIdx, lastIdx, nextIdxID, idxCount, err := readDatabaseMetadata(meta)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount = first, last, nextID, count
+	s.firstIndexCatalogPage, s.lastIndexCatalogPage, s.nextIndexID, s.indexCount = firstIdx, lastIdx, nextIdxID, idxCount
+	if err := s.loadCatalog(); err != nil {
+		pager.Close()
+		return nil, err
+	}
+	if uint64(len(s.tables)) != s.tableCount {
+		pager.Close()
+		return nil, fmt.Errorf("catalog says %d tables but loaded %d", s.tableCount, len(s.tables))
+	}
+	if err := s.loadIndexes(); err != nil {
+		pager.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Store) loadCatalog() error {
+	seenPages := map[uint64]bool{}
+	loadedIDs := map[uint64]bool{}
+	pageNum := s.firstCatalogPage
+	var lastSeen uint64
+	for pageNum != 0 {
+		if seenPages[pageNum] {
+			return fmt.Errorf("catalog page cycle at %d", pageNum)
+		}
+		seenPages[pageNum] = true
+		page, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return err
+		}
+		if page.Type != PageTypeCatalog {
+			return fmt.Errorf("catalog chain page %d is %s", pageNum, page.Type)
+		}
+		n := catalogSlotCount(page)
+		if n &lt; 0 || n &gt; CatalogSlotsPerPage {
+			return fmt.Errorf("catalog page %d has invalid slot count %d", pageNum, n)
+		}
+		for slot := 0; slot &lt; n; slot++ {
+			t, err := readCatalogEntry(page, slot)
+			if err != nil {
+				return err
+			}
+			if t == nil {
+				return fmt.Errorf("catalog page %d slot %d is unexpectedly empty", pageNum, slot)
+			}
+			key := normalizeTableName(t.Name)
+			if _, exists := s.tables[key]; exists {
+				return fmt.Errorf("duplicate table name %q in catalog", t.Name)
+			}
+			if loadedIDs[t.ID] {
+				return fmt.Errorf("duplicate table id %d in catalog", t.ID)
+			}
+			loadedIDs[t.ID] = true
+			t.tree.pager = s.pager
+			s.tables[key] = t
+		}
+		lastSeen = pageNum
+		pageNum = catalogNextPage(page)
+	}
+	if lastSeen != s.lastCatalogPage {
+		return fmt.Errorf("catalog last-page metadata says %d but chain ends at %d", s.lastCatalogPage, lastSeen)
+	}
+	return nil
+}
+
+func (s *Store) persistMetadata() error {
+	page, err := s.pager.GetPage(HeaderPage)
+	if err != nil {
+		return err
+	}
+	writeDatabaseMetadata(page, s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount, s.firstIndexCatalogPage, s.lastIndexCatalogPage, s.nextIndexID, s.indexCount)
+	return nil
+}
+
+func (s *Store) persistTable(t *Table) error {
+	page, err := s.pager.GetPage(t.catalog.Page)
+	if err != nil {
+		return err
+	}
+	return writeCatalogEntry(page, int(t.catalog.Slot), t)
+}
+
+func validIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if !(r == '_' || r &gt;= 'a' &amp;&amp; r &lt;= 'z' || r &gt;= 'A' &amp;&amp; r &lt;= 'Z' || i &gt; 0 &amp;&amp; r &gt;= '0' &amp;&amp; r &lt;= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) CreateTable(name string, columns []Column) (*Table, error) {
+	if !validIdentifier(name) || len([]byte(name)) &gt; MaxTableNameLen {
+		return nil, fmt.Errorf("table name must be a simple identifier of at most %d bytes", MaxTableNameLen)
+	}
+	key := normalizeTableName(name)
+	if _, exists := s.tables[key]; exists {
+		return nil, fmt.Errorf("table %q already exists", name)
+	}
+	schema, err := CompileSchema(columns)
+	if err != nil {
+		return nil, err
+	}
+	root, err := s.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	t := &amp;Table{
+		ID:        s.nextTableID,
+		Name:      name,
+		Schema:    schema,
+		tree:      newBTree(s.pager, root.Number),
+		nextRowID: 1,
+	}
+
+	catalogPage, err := s.pager.GetPage(s.lastCatalogPage)
+	if err != nil {
+		return nil, err
+	}
+	slot := catalogSlotCount(catalogPage)
+	if slot &gt;= CatalogSlotsPerPage {
+		newPage, err := s.pager.NewPage(PageTypeCatalog)
+		if err != nil {
+			return nil, err
+		}
+		if err := initializeCatalogPage(newPage); err != nil {
+			return nil, err
+		}
+		setCatalogNextPage(catalogPage, newPage.Number)
+		s.lastCatalogPage = newPage.Number
+		catalogPage = newPage
+		slot = 0
+	}
+	t.catalog = CatalogPointer{Page: catalogPage.Number, Slot: uint16(slot)}
+	if err := writeCatalogEntry(catalogPage, slot, t); err != nil {
+		return nil, err
+	}
+	setCatalogSlotCount(catalogPage, slot+1)
+
+	s.tables[key] = t
+	s.nextTableID++
+	s.tableCount++
+	if err := s.persistMetadata(); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Store) Table(name string) (*Table, error) {
+	t, ok := s.tables[normalizeTableName(name)]
+	if !ok {
+		return nil, fmt.Errorf("table %q not found", name)
+	}
+	return t, nil
+}
+
+func (s *Store) Tables() []*Table {
+	out := make([]*Table, 0, len(s.tables))
+	for _, t := range s.tables {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID &lt; out[j].ID })
+	return out
+}
+
+func dataTableID(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataTableIDOffset : dataTableIDOffset+8])
+}
+func dataSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[dataSlotCountOffset : dataSlotCountOffset+2]))
+}
+func setDataSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[dataSlotCountOffset:dataSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+func dataRowSize(page *Page) uint32 {
+	return binary.LittleEndian.Uint32(page.Data[dataRowSizeOffset : dataRowSizeOffset+4])
+}
+func dataNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataNextPageOffset : dataNextPageOffset+8])
+}
+func setDataNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[dataNextPageOffset:dataNextPageOffset+8], n)
+	page.MarkDirty()
+}
+func dataCapacity(rowSize uint32) int {
+	if rowSize == 0 {
+		return 0
+	}
+	return (PageSize - dataRowsOffset) / int(rowSize)
+}
+
+func initializeDataPage(page *Page, t *Table) error {
+	if page.Type != PageTypeData {
+		return fmt.Errorf("page %d is %s, expected data", page.Number, page.Type)
+	}
+	binary.LittleEndian.PutUint64(page.Data[dataTableIDOffset:dataTableIDOffset+8], t.ID)
+	binary.LittleEndian.PutUint32(page.Data[dataRowSizeOffset:dataRowSizeOffset+4], t.Schema.RowSize)
+	setDataSlotCount(page, 0)
+	setDataNextPage(page, 0)
+	page.MarkDirty()
+	return nil
+}
+
+func validateDataPage(page *Page, t *Table) error {
+	if page.Type != PageTypeData {
+		return fmt.Errorf("page %d is %s, expected data", page.Number, page.Type)
+	}
+	if got := dataTableID(page); got != t.ID {
+		return fmt.Errorf("data page %d belongs to table id %d, expected %d", page.Number, got, t.ID)
+	}
+	if got := dataRowSize(page); got != t.Schema.RowSize {
+		return fmt.Errorf("data page %d row size is %d, table %s expects %d", page.Number, got, t.Name, t.Schema.RowSize)
+	}
+	count := dataSlotCount(page)
+	if count &lt; 0 || count &gt; dataCapacity(t.Schema.RowSize) {
+		return fmt.Errorf("data page %d has invalid slot count %d", page.Number, count)
+	}
+	return nil
+}
+
+func (s *Store) allocateDataPage(t *Table) (*Page, error) {
+	page, err := s.pager.NewPage(PageTypeData)
+	if err != nil {
+		return nil, err
+	}
+	if err := initializeDataPage(page, t); err != nil {
+		return nil, err
+	}
+	if t.lastData != 0 {
+		last, err := s.pager.GetPage(t.lastData)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDataPage(last, t); err != nil {
+			return nil, err
+		}
+		setDataNextPage(last, page.Number)
+	} else {
+		t.firstData = page.Number
+	}
+	t.lastData = page.Number
+	return page, nil
+}
+
+func rowRange(t *Table, slot int) (int, int, error) {
+	cap := dataCapacity(t.Schema.RowSize)
+	if slot &lt; 0 || slot &gt;= cap {
+		return 0, 0, fmt.Errorf("slot %d out of range for table %s", slot, t.Name)
+	}
+	start := dataRowsOffset + slot*int(t.Schema.RowSize)
+	return start, start + int(t.Schema.RowSize), nil
+}
+
+func (s *Store) appendRow(t *Table, encoded []byte) (RecordPointer, error) {
+	if len(encoded) != int(t.Schema.RowSize) {
+		return RecordPointer{}, fmt.Errorf("encoded row has %d bytes, expected %d", len(encoded), t.Schema.RowSize)
+	}
+	var page *Page
+	var err error
+	if t.lastData == 0 {
+		page, err = s.allocateDataPage(t)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+	} else {
+		page, err = s.pager.GetPage(t.lastData)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+		if err := validateDataPage(page, t); err != nil {
+			return RecordPointer{}, err
+		}
+		if dataSlotCount(page) &gt;= dataCapacity(t.Schema.RowSize) {
+			page, err = s.allocateDataPage(t)
+			if err != nil {
+				return RecordPointer{}, err
+			}
+		}
+	}
+	slot := dataSlotCount(page)
+	start, end, err := rowRange(t, slot)
+	if err != nil {
+		return RecordPointer{}, err
+	}
+	copy(page.Data[start:end], encoded)
+	setDataSlotCount(page, slot+1)
+	page.MarkDirty()
+	return RecordPointer{Page: page.Number, Slot: uint16(slot)}, nil
+}
+
+func (s *Store) readRowAt(t *Table, ptr RecordPointer) (Row, *Page, int, error) {
+	page, err := s.pager.GetPage(ptr.Page)
+	if err != nil {
+		return Row{}, nil, 0, err
+	}
+	if err := validateDataPage(page, t); err != nil {
+		return Row{}, nil, 0, err
+	}
+	if int(ptr.Slot) &gt;= dataSlotCount(page) {
+		return Row{}, nil, 0, fmt.Errorf("pointer %d:%d is past used slots", ptr.Page, ptr.Slot)
+	}
+	start, end, err := rowRange(t, int(ptr.Slot))
+	if err != nil {
+		return Row{}, nil, 0, err
+	}
+	row, err := DecodeRow(t.Schema, page.Data[start:end])
+	return row, page, start, err
+}
+
+func (s *Store) Insert(tableName string, values []Value) (int64, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return 0, err
+	}
+	rowID := t.nextRowID
+	encoded, err := EncodeRow(t.Schema, rowID, values)
+	if err != nil {
+		return 0, err
+	}
+	ptr, err := s.appendRow(t, encoded)
+	if err != nil {
+		return 0, err
+	}
+	if err := t.tree.Insert(rowID, ptr); err != nil {
+		return 0, err
+	}
+	for _, idx := range s.IndexesForTable(t) {
+		if err := s.addIndexRow(idx, values[idx.ColumnIndex], rowID); err != nil {
+			return 0, err
+		}
+		if err := s.persistIndex(idx); err != nil {
+			return 0, err
+		}
+	}
+	t.nextRowID++
+	if err := s.persistTable(t); err != nil {
+		return 0, err
+	}
+	return rowID, nil
+}
+
+func (s *Store) Get(tableName string, rowID int64) (Row, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return Row{}, err
+	}
+	ptr, _, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return Row{}, err
+	}
+	row, _, _, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return Row{}, err
+	}
+	if row.RowID != rowID {
+		return Row{}, fmt.Errorf("index key %d points to rowid %d", rowID, row.RowID)
+	}
+	if row.Deleted {
+		return Row{}, ErrDeleted
+	}
+	return row, nil
+}
+
+func (s *Store) GetWithSteps(tableName string, rowID int64) (Row, int, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return Row{}, 0, err
+	}
+	ptr, steps, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return Row{}, steps, err
+	}
+	row, _, _, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return Row{}, steps, err
+	}
+	if row.RowID != rowID {
+		return Row{}, steps, fmt.Errorf("index key %d points to rowid %d", rowID, row.RowID)
+	}
+	if row.Deleted {
+		return Row{}, steps, ErrDeleted
+	}
+	return row, steps, nil
+}
+
+func (s *Store) Scan(tableName string) ([]Row, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	ptrs, err := t.tree.AllPointers()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]Row, 0, len(ptrs))
+	for _, ptr := range ptrs {
+		row, _, _, err := s.readRowAt(t, ptr)
+		if err != nil {
+			return nil, err
+		}
+		if row.Deleted {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func (s *Store) Delete(tableName string, rowID int64) error {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return err
+	}
+	ptr, _, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return err
+	}
+	row, page, start, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return err
+	}
+	if row.Deleted {
+		return ErrDeleted
+	}
+	for _, idx := range s.IndexesForTable(t) {
+		if err := s.removeIndexRow(idx, row.Values[idx.ColumnIndex], rowID); err != nil {
+			return err
+		}
+	}
+	page.Data[start] |= 1
+	page.MarkDirty()
+	return nil
+}
+
+func (s *Store) TreeDump(tableName string) (string, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return "", err
+	}
+	return t.tree.Dump()
+}
+
+func (s *Store) DataChain(tableName string) ([]uint64, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := t.firstData; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("data-page cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDataPage(page, t); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+		p = dataNextPage(page)
+	}
+	if len(out) == 0 &amp;&amp; t.lastData != 0 {
+		return nil, fmt.Errorf("table %s has last data page but empty chain", t.Name)
+	}
+	if len(out) &gt; 0 &amp;&amp; out[len(out)-1] != t.lastData {
+		return nil, fmt.Errorf("table %s last data metadata says %d but chain ends at %d", t.Name, t.lastData, out[len(out)-1])
+	}
+	return out, nil
+}
+
+func (s *Store) CatalogPages() ([]uint64, error) {
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := s.firstCatalogPage; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("catalog cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeCatalog {
+			return nil, fmt.Errorf("catalog chain page %d is %s", p, page.Type)
+		}
+		out = append(out, p)
+		p = catalogNextPage(page)
+	}
+	return out, nil
+}
+
+func (s *Store) Stats() PagerStats { return s.pager.Stats() }
+func (s *Store) Flush() error      { return s.pager.FlushAll() }
+func (s *Store) Verify() (uint64, error) {
+	return s.pager.VerifyAll()
+}
+func (s *Store) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	return s.pager.PageInfo(pageNum)
+}
+func (s *Store) Close() error { return s.pager.Close() }
+
+func describeColumn(c Column) string {
+	typ := c.Type.String()
+	if c.Type == TypeText {
+		typ = fmt.Sprintf("TEXT(%d)", c.MaxLen)
+	}
+	nullability := "NOT NULL"
+	if c.Nullable {
+		nullability = "NULL"
+	}
+	return fmt.Sprintf("%s %s %s offset=%d width=%d", c.Name, typ, nullability, c.Offset, c.Width)
+}
+
+func (s *Store) DescribeTable(name string) (string, error) {
+	t, err := s.Table(name)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&amp;b, "table=%s id=%d row_size=%d rows_per_page=%d root_page=%d next_rowid=%d\n", t.Name, t.ID, t.Schema.RowSize, dataCapacity(t.Schema.RowSize), t.tree.RootPage(), t.nextRowID)
+	b.WriteString("rowid INT (implicit key)\n")
+	for i, c := range t.Schema.Columns {
+		fmt.Fprintf(&amp;b, "%d %s\n", i, describeColumn(c))
+	}
+	for _, idx := range s.IndexesForTable(t) {
+		fmt.Fprintf(&amp;b, "index %s ON %s(%s) root_page=%d\n", idx.Name, t.Name, t.Schema.Columns[idx.ColumnIndex].Name, idx.tree.RootPage())
+	}
+	return b.String(), nil
+}</code></pre><h3>cursor.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// RowCursor is the pull-based execution interface used by Part 7.
+// Each call to Next returns at most one visible row and remembers
+// enough state to continue on the next call.
+type RowCursor interface {
+	Next() (Row, bool, error)
+}
+
+// TableScanCursor walks the table's linked list of data pages directly.
+// It does not call Store.Scan and does not materialize the whole table.
+type TableScanCursor struct {
+	store   *Store
+	table   *Table
+	pageNum uint64
+	page    *Page
+	slot    int
+}
+
+func NewTableScanCursor(store *Store, table *Table) *TableScanCursor {
+	return &amp;TableScanCursor{store: store, table: table, pageNum: table.firstData}
+}
+
+func (c *TableScanCursor) Next() (Row, bool, error) {
+	for c.pageNum != 0 {
+		if c.page == nil {
+			page, err := c.store.pager.GetPage(c.pageNum)
+			if err != nil {
+				return Row{}, false, err
+			}
+			if err := validateDataPage(page, c.table); err != nil {
+				return Row{}, false, err
+			}
+			c.page = page
+			c.slot = 0
+		}
+
+		count := dataSlotCount(c.page)
+		for c.slot &lt; count {
+			slot := c.slot
+			c.slot++
+
+			start, end, err := rowRange(c.table, slot)
+			if err != nil {
+				return Row{}, false, err
+			}
+			row, err := DecodeRow(c.table.Schema, c.page.Data[start:end])
+			if err != nil {
+				return Row{}, false, err
+			}
+			if row.Deleted {
+				continue
+			}
+			return row, true, nil
+		}
+
+		c.pageNum = dataNextPage(c.page)
+		c.page = nil
+	}
+	return Row{}, false, nil
+}
+
+// RowIDLookupCursor turns the B+tree point lookup into the same interface
+// as a scan. That lets higher execution operators ignore how rows arrive.
+type RowIDLookupCursor struct {
+	store *Store
+	table *Table
+	rowID int64
+	done  bool
+}
+
+func NewRowIDLookupCursor(store *Store, table *Table, rowID int64) *RowIDLookupCursor {
+	return &amp;RowIDLookupCursor{store: store, table: table, rowID: rowID}
+}
+
+func (c *RowIDLookupCursor) Next() (Row, bool, error) {
+	if c.done {
+		return Row{}, false, nil
+	}
+	c.done = true
+	row, err := c.store.Get(c.table.Name, c.rowID)
+	if err == ErrNotFound || err == ErrDeleted {
+		return Row{}, false, nil
+	}
+	if err != nil {
+		return Row{}, false, err
+	}
+	return row, true, nil
+}
+
+type CompiledPredicate struct {
+	rowID       bool
+	columnIndex int
+	literal     Literal
+}
+
+func CompilePredicate(table *Table, expr Expr) (CompiledPredicate, error) {
+	b, ok := expr.(*BinaryExpr)
+	if !ok || b.Operator != TokenEqual {
+		return CompiledPredicate{}, fmt.Errorf("Part 7 supports equality predicates only")
+	}
+	left, ok := b.Left.(*IdentifierExpr)
+	if !ok {
+		return CompiledPredicate{}, fmt.Errorf("left side of WHERE must be a column name")
+	}
+	right, ok := b.Right.(*LiteralExpr)
+	if !ok {
+		return CompiledPredicate{}, fmt.Errorf("right side of WHERE must be a literal")
+	}
+	if right.Value.Kind == LiteralNull {
+		return CompiledPredicate{}, fmt.Errorf("Part 7 does not implement IS NULL; '= NULL' is not a supported predicate")
+	}
+
+	if strings.EqualFold(left.Name, "rowid") {
+		if right.Value.Kind != LiteralInt {
+			return CompiledPredicate{}, fmt.Errorf("rowid must be compared with an integer")
+		}
+		return CompiledPredicate{rowID: true, columnIndex: -1, literal: right.Value}, nil
+	}
+
+	for i, col := range table.Schema.Columns {
+		if !strings.EqualFold(col.Name, left.Name) {
+			continue
+		}
+		switch col.Type {
+		case TypeInt64:
+			if right.Value.Kind != LiteralInt {
+				return CompiledPredicate{}, fmt.Errorf("column %s expects an INT predicate", col.Name)
+			}
+		case TypeText:
+			if right.Value.Kind != LiteralString {
+				return CompiledPredicate{}, fmt.Errorf("column %s expects a quoted TEXT predicate", col.Name)
+			}
+			if len([]byte(right.Value.Text)) &gt; int(col.MaxLen) {
+				return CompiledPredicate{}, fmt.Errorf("column %s allows at most %d UTF-8 bytes", col.Name, col.MaxLen)
+			}
+		case TypeBool:
+			if right.Value.Kind != LiteralBool {
+				return CompiledPredicate{}, fmt.Errorf("column %s expects a BOOL predicate", col.Name)
+			}
+		default:
+			return CompiledPredicate{}, fmt.Errorf("column %s has unsupported type %s", col.Name, col.Type)
+		}
+		return CompiledPredicate{columnIndex: i, literal: right.Value}, nil
+	}
+	return CompiledPredicate{}, fmt.Errorf("column %q not found in table %s", left.Name, table.Name)
+}
+
+func (p CompiledPredicate) Matches(row Row) bool {
+	if p.rowID {
+		return row.RowID == p.literal.Int
+	}
+	if p.columnIndex &lt; 0 || p.columnIndex &gt;= len(row.Values) {
+		return false
+	}
+	value := row.Values[p.columnIndex]
+	if value.Null {
+		return false
+	}
+	switch p.literal.Kind {
+	case LiteralInt:
+		return value.Type == TypeInt64 &amp;&amp; value.Int == p.literal.Int
+	case LiteralString:
+		return value.Type == TypeText &amp;&amp; value.Text == p.literal.Text
+	case LiteralBool:
+		return value.Type == TypeBool &amp;&amp; value.Bool == p.literal.Bool
+	default:
+		return false
+	}
+}
+
+// FilterCursor is an execution operator. It pulls rows from its child until
+// one satisfies the compiled predicate, then yields that row to its parent.
+type FilterCursor struct {
+	child     RowCursor
+	predicate CompiledPredicate
+}
+
+func NewFilterCursor(child RowCursor, predicate CompiledPredicate) *FilterCursor {
+	return &amp;FilterCursor{child: child, predicate: predicate}
+}
+
+func (c *FilterCursor) Next() (Row, bool, error) {
+	for {
+		row, ok, err := c.child.Next()
+		if err != nil || !ok {
+			return Row{}, ok, err
+		}
+		if c.predicate.Matches(row) {
+			return row, true, nil
+		}
+	}
+}</code></pre><h3>secondary_cursor.go</h3><pre><code>package main
+
+// SecondaryIndexCursor walks the bucket chain for one hashed equality key.
+// It yields candidate rows one at a time. The FilterCursor above it rechecks
+// the real typed predicate, which makes hash collisions harmless.
+type SecondaryIndexCursor struct {
+	store   *Store
+	table   *Table
+	index   *SecondaryIndex
+	hash    int64
+	pageNum uint64
+	page    *Page
+	slot    int
+}
+
+func NewSecondaryIndexCursor(store *Store, table *Table, idx *SecondaryIndex, value Value) (*SecondaryIndexCursor, error) {
+	hash, err := typedValueHash(value)
+	if err != nil {
+		return nil, err
+	}
+	ptr, _, err := idx.tree.Lookup(hash)
+	if err == ErrNotFound {
+		return &amp;SecondaryIndexCursor{store: store, table: table, index: idx, hash: hash}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &amp;SecondaryIndexCursor{store: store, table: table, index: idx, hash: hash, pageNum: ptr.Page}, nil
+}
+
+func (c *SecondaryIndexCursor) Next() (Row, bool, error) {
+	for c.pageNum != 0 {
+		if c.page == nil {
+			p, err := c.store.pager.GetPage(c.pageNum)
+			if err != nil {
+				return Row{}, false, err
+			}
+			if err := validateIndexBucket(p, c.index, c.hash); err != nil {
+				return Row{}, false, err
+			}
+			c.page = p
+			c.slot = 0
+		}
+		count := bucketCount(c.page)
+		for c.slot &lt; count {
+			slot := c.slot
+			c.slot++
+			id := bucketRowID(c.page, slot)
+			if id == 0 {
+				continue
+			}
+			row, err := c.store.Get(c.table.Name, id)
+			if err == ErrNotFound || err == ErrDeleted {
+				continue
+			}
+			if err != nil {
+				return Row{}, false, err
+			}
+			return row, true, nil
+		}
+		c.pageNum = bucketNext(c.page)
+		c.page = nil
+	}
+	return Row{}, false, nil
+}</code></pre><h3>lexer.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type TokenKind int
+
+const (
+	TokenEOF TokenKind = iota
+	TokenIdentifier
+	TokenNumber
+	TokenString
+	TokenComma
+	TokenLParen
+	TokenRParen
+	TokenSemicolon
+	TokenStar
+	TokenEqual
+	TokenCreate
+	TokenTable
+	TokenInsert
+	TokenInto
+	TokenValues
+	TokenSelect
+	TokenFrom
+	TokenWhere
+	TokenDelete
+	TokenInt
+	TokenBool
+	TokenText
+	TokenNull
+	TokenNot
+	TokenTrue
+	TokenFalse
+	TokenBegin
+	TokenCommit
+	TokenRollback
+	TokenTransaction
+	TokenIndex
+	TokenOn
+)
+
+func (k TokenKind) String() string {
+	names := map[TokenKind]string{
+		TokenEOF: "EOF", TokenIdentifier: "IDENT", TokenNumber: "NUMBER", TokenString: "STRING",
+		TokenComma: "COMMA", TokenLParen: "LPAREN", TokenRParen: "RPAREN", TokenSemicolon: "SEMICOLON",
+		TokenStar: "STAR", TokenEqual: "EQUAL", TokenCreate: "CREATE", TokenTable: "TABLE",
+		TokenInsert: "INSERT", TokenInto: "INTO", TokenValues: "VALUES", TokenSelect: "SELECT",
+		TokenFrom: "FROM", TokenWhere: "WHERE", TokenDelete: "DELETE", TokenInt: "INT",
+		TokenBool: "BOOL", TokenText: "TEXT", TokenNull: "NULL", TokenNot: "NOT",
+		TokenTrue: "TRUE", TokenFalse: "FALSE", TokenBegin: "BEGIN", TokenCommit: "COMMIT",
+		TokenRollback: "ROLLBACK", TokenTransaction: "TRANSACTION", TokenIndex: "INDEX", TokenOn: "ON",
+	}
+	if s, ok := names[k]; ok {
+		return s
+	}
+	return fmt.Sprintf("TOKEN(%d)", int(k))
+}
+
+type Token struct {
+	Kind   TokenKind
+	Lexeme string
+	Pos    int
+}
+
+var keywords = map[string]TokenKind{
+	"CREATE": TokenCreate, "TABLE": TokenTable, "INSERT": TokenInsert, "INTO": TokenInto,
+	"VALUES": TokenValues, "SELECT": TokenSelect, "FROM": TokenFrom, "WHERE": TokenWhere,
+	"DELETE": TokenDelete, "INT": TokenInt, "INTEGER": TokenInt, "BOOL": TokenBool,
+	"BOOLEAN": TokenBool, "TEXT": TokenText, "NULL": TokenNull, "NOT": TokenNot,
+	"TRUE": TokenTrue, "FALSE": TokenFalse, "BEGIN": TokenBegin, "COMMIT": TokenCommit,
+	"ROLLBACK": TokenRollback, "TRANSACTION": TokenTransaction, "INDEX": TokenIndex, "ON": TokenOn,
+}
+
+type Lexer struct {
+	input string
+	pos   int
+}
+
+func Lex(input string) ([]Token, error) {
+	l := &amp;Lexer{input: input}
+	var tokens []Token
+	for {
+		tok, err := l.nextToken()
+		if err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, tok)
+		if tok.Kind == TokenEOF {
+			return tokens, nil
+		}
+	}
+}
+
+func (l *Lexer) nextToken() (Token, error) {
+	for l.pos &lt; len(l.input) &amp;&amp; isSpace(l.input[l.pos]) {
+		l.pos++
+	}
+	if l.pos &gt;= len(l.input) {
+		return Token{Kind: TokenEOF, Pos: l.pos}, nil
+	}
+
+	start := l.pos
+	ch := l.input[l.pos]
+	switch ch {
+	case ',':
+		l.pos++
+		return Token{Kind: TokenComma, Lexeme: ",", Pos: start}, nil
+	case '(':
+		l.pos++
+		return Token{Kind: TokenLParen, Lexeme: "(", Pos: start}, nil
+	case ')':
+		l.pos++
+		return Token{Kind: TokenRParen, Lexeme: ")", Pos: start}, nil
+	case ';':
+		l.pos++
+		return Token{Kind: TokenSemicolon, Lexeme: ";", Pos: start}, nil
+	case '*':
+		l.pos++
+		return Token{Kind: TokenStar, Lexeme: "*", Pos: start}, nil
+	case '=':
+		l.pos++
+		return Token{Kind: TokenEqual, Lexeme: "=", Pos: start}, nil
+	case '\'':
+		return l.lexString()
+	}
+
+	if isDigit(ch) || (ch == '-' &amp;&amp; l.pos+1 &lt; len(l.input) &amp;&amp; isDigit(l.input[l.pos+1])) {
+		if ch == '-' {
+			l.pos++
+		}
+		for l.pos &lt; len(l.input) &amp;&amp; isDigit(l.input[l.pos]) {
+			l.pos++
+		}
+		return Token{Kind: TokenNumber, Lexeme: l.input[start:l.pos], Pos: start}, nil
+	}
+	if isIdentStart(ch) {
+		l.pos++
+		for l.pos &lt; len(l.input) &amp;&amp; isIdentContinue(l.input[l.pos]) {
+			l.pos++
+		}
+		word := l.input[start:l.pos]
+		if kind, ok := keywords[strings.ToUpper(word)]; ok {
+			return Token{Kind: kind, Lexeme: word, Pos: start}, nil
+		}
+		return Token{Kind: TokenIdentifier, Lexeme: word, Pos: start}, nil
+	}
+	return Token{}, fmt.Errorf("lex error at byte %d: unexpected character %q", start, ch)
+}
+
+func (l *Lexer) lexString() (Token, error) {
+	start := l.pos
+	l.pos++
+	var b strings.Builder
+	for l.pos &lt; len(l.input) {
+		ch := l.input[l.pos]
+		if ch == '\'' {
+			if l.pos+1 &lt; len(l.input) &amp;&amp; l.input[l.pos+1] == '\'' {
+				b.WriteByte('\'')
+				l.pos += 2
+				continue
+			}
+			l.pos++
+			return Token{Kind: TokenString, Lexeme: b.String(), Pos: start}, nil
+		}
+		b.WriteByte(ch)
+		l.pos++
+	}
+	return Token{}, fmt.Errorf("lex error at byte %d: unterminated string literal", start)
+}
+
+func isSpace(ch byte) bool { return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' }
+func isDigit(ch byte) bool { return ch &gt;= '0' &amp;&amp; ch &lt;= '9' }
+func isIdentStart(ch byte) bool {
+	return ch == '_' || (ch &gt;= 'a' &amp;&amp; ch &lt;= 'z') || (ch &gt;= 'A' &amp;&amp; ch &lt;= 'Z')
+}
+func isIdentContinue(ch byte) bool { return isIdentStart(ch) || isDigit(ch) }</code></pre><h3>parser.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type Statement interface{ statementNode() }
+type Expr interface{ exprNode() }
+
+type TypeSpec struct {
+	Type    ColumnType
+	TextLen uint16
+}
+type ColumnDef struct {
+	Name     string
+	Type     TypeSpec
+	Nullable bool
+}
+
+type CreateTableStmt struct {
+	Name    string
+	Columns []ColumnDef
+}
+
+func (*CreateTableStmt) statementNode() {}
+
+type CreateIndexStmt struct {
+	Name   string
+	Table  string
+	Column string
+}
+
+func (*CreateIndexStmt) statementNode() {}
+
+type LiteralKind int
+
+const (
+	LiteralInt LiteralKind = iota + 1
+	LiteralString
+	LiteralBool
+	LiteralNull
+)
+
+type Literal struct {
+	Kind LiteralKind
+	Int  int64
+	Text string
+	Bool bool
+}
+
+type InsertStmt struct {
+	Table  string
+	Values []Literal
+}
+
+func (*InsertStmt) statementNode() {}
+
+type SelectStmt struct {
+	All     bool
+	Columns []string
+	Table   string
+	Where   Expr
+}
+
+func (*SelectStmt) statementNode() {}
+
+type DeleteStmt struct {
+	Table string
+	Where Expr
+}
+
+func (*DeleteStmt) statementNode() {}
+
+type BeginStmt struct{}
+
+func (*BeginStmt) statementNode() {}
+
+type CommitStmt struct{}
+
+func (*CommitStmt) statementNode() {}
+
+type RollbackStmt struct{}
+
+func (*RollbackStmt) statementNode() {}
+
+type IdentifierExpr struct{ Name string }
+
+func (*IdentifierExpr) exprNode() {}
+
+type LiteralExpr struct{ Value Literal }
+
+func (*LiteralExpr) exprNode() {}
+
+type BinaryExpr struct {
+	Left     Expr
+	Operator TokenKind
+	Right    Expr
+}
+
+func (*BinaryExpr) exprNode() {}
+
+type Parser struct {
+	tokens []Token
+	pos    int
+}
+
+func ParseSQL(input string) (Statement, error) {
+	tokens, err := Lex(input)
+	if err != nil {
+		return nil, err
+	}
+	return NewParser(tokens).ParseStatement()
+}
+func NewParser(tokens []Token) *Parser { return &amp;Parser{tokens: tokens} }
+
+func (p *Parser) ParseStatement() (Statement, error) {
+	var stmt Statement
+	var err error
+	switch p.peek().Kind {
+	case TokenCreate:
+		stmt, err = p.parseCreateTable()
+	case TokenInsert:
+		stmt, err = p.parseInsert()
+	case TokenSelect:
+		stmt, err = p.parseSelect()
+	case TokenDelete:
+		stmt, err = p.parseDelete()
+	case TokenBegin:
+		p.advance()
+		p.match(TokenTransaction)
+		stmt = &amp;BeginStmt{}
+	case TokenCommit:
+		p.advance()
+		p.match(TokenTransaction)
+		stmt = &amp;CommitStmt{}
+	case TokenRollback:
+		p.advance()
+		p.match(TokenTransaction)
+		stmt = &amp;RollbackStmt{}
+	default:
+		return nil, p.errorf(p.peek(), "expected CREATE, INSERT, SELECT, DELETE, BEGIN, COMMIT, or ROLLBACK")
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.match(TokenSemicolon)
+	if p.peek().Kind != TokenEOF {
+		return nil, p.errorf(p.peek(), "unexpected token after statement")
+	}
+	return stmt, nil
+}
+
+func (p *Parser) parseCreateTable() (Statement, error) {
+	p.advance() // CREATE
+	if p.match(TokenIndex) {
+		name, err := p.expect(TokenIdentifier, "expected index name after CREATE INDEX")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenOn, "expected ON after index name"); err != nil {
+			return nil, err
+		}
+		table, err := p.expect(TokenIdentifier, "expected table name after ON")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenLParen, "expected '(' before indexed column"); err != nil {
+			return nil, err
+		}
+		column, err := p.expect(TokenIdentifier, "expected indexed column name")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenRParen, "expected ')' after indexed column"); err != nil {
+			return nil, err
+		}
+		return &amp;CreateIndexStmt{Name: name.Lexeme, Table: table.Lexeme, Column: column.Lexeme}, nil
+	}
+	if _, err := p.expect(TokenTable, "expected TABLE or INDEX after CREATE"); err != nil {
+		return nil, err
+	}
+	name, err := p.expect(TokenIdentifier, "expected table name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenLParen, "expected '(' after table name"); err != nil {
+		return nil, err
+	}
+	var columns []ColumnDef
+	for {
+		colName, err := p.expect(TokenIdentifier, "expected column name")
+		if err != nil {
+			return nil, err
+		}
+		typeSpec, err := p.parseTypeSpec()
+		if err != nil {
+			return nil, err
+		}
+		nullable := true // SQL columns are nullable unless constrained NOT NULL.
+		if p.match(TokenNot) {
+			if _, err := p.expect(TokenNull, "expected NULL after NOT"); err != nil {
+				return nil, err
+			}
+			nullable = false
+		} else if p.match(TokenNull) {
+			nullable = true
+		}
+		columns = append(columns, ColumnDef{Name: colName.Lexeme, Type: typeSpec, Nullable: nullable})
+		if p.match(TokenComma) {
+			continue
+		}
+		break
+	}
+	if _, err := p.expect(TokenRParen, "expected ')' after column definitions"); err != nil {
+		return nil, err
+	}
+	return &amp;CreateTableStmt{Name: name.Lexeme, Columns: columns}, nil
+}
+
+func (p *Parser) parseTypeSpec() (TypeSpec, error) {
+	tok := p.advance()
+	switch tok.Kind {
+	case TokenInt:
+		return TypeSpec{Type: TypeInt64}, nil
+	case TokenBool:
+		return TypeSpec{Type: TypeBool}, nil
+	case TokenText:
+		if _, err := p.expect(TokenLParen, "expected '(' after TEXT"); err != nil {
+			return TypeSpec{}, err
+		}
+		nTok, err := p.expect(TokenNumber, "expected maximum length inside TEXT(...)")
+		if err != nil {
+			return TypeSpec{}, err
+		}
+		n, err := strconv.Atoi(nTok.Lexeme)
+		if err != nil || n &lt; 1 || n &gt; MaxTextLen {
+			return TypeSpec{}, p.errorf(nTok, "TEXT length must be 1..%d", MaxTextLen)
+		}
+		if _, err := p.expect(TokenRParen, "expected ')' after TEXT length"); err != nil {
+			return TypeSpec{}, err
+		}
+		return TypeSpec{Type: TypeText, TextLen: uint16(n)}, nil
+	default:
+		return TypeSpec{}, p.errorf(tok, "expected INT, BOOL, or TEXT(n)")
+	}
+}
+
+func (p *Parser) parseInsert() (Statement, error) {
+	p.advance() // INSERT
+	if _, err := p.expect(TokenInto, "expected INTO after INSERT"); err != nil {
+		return nil, err
+	}
+	table, err := p.expect(TokenIdentifier, "expected table name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenValues, "expected VALUES after table name"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenLParen, "expected '(' after VALUES"); err != nil {
+		return nil, err
+	}
+	var values []Literal
+	if p.peek().Kind != TokenRParen {
+		for {
+			v, err := p.parseLiteral()
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, v)
+			if p.match(TokenComma) {
+				continue
+			}
+			break
+		}
+	}
+	if _, err := p.expect(TokenRParen, "expected ')' after VALUES list"); err != nil {
+		return nil, err
+	}
+	return &amp;InsertStmt{Table: table.Lexeme, Values: values}, nil
+}
+
+func (p *Parser) parseSelect() (Statement, error) {
+	p.advance() // SELECT
+	stmt := &amp;SelectStmt{}
+	if p.match(TokenStar) {
+		stmt.All = true
+	} else {
+		for {
+			name, err := p.expect(TokenIdentifier, "expected column name or '*'")
+			if err != nil {
+				return nil, err
+			}
+			stmt.Columns = append(stmt.Columns, name.Lexeme)
+			if p.match(TokenComma) {
+				continue
+			}
+			break
+		}
+	}
+	if _, err := p.expect(TokenFrom, "expected FROM after SELECT list"); err != nil {
+		return nil, err
+	}
+	table, err := p.expect(TokenIdentifier, "expected table name after FROM")
+	if err != nil {
+		return nil, err
+	}
+	stmt.Table = table.Lexeme
+	if p.match(TokenWhere) {
+		expr, err := p.parseEquality()
+		if err != nil {
+			return nil, err
+		}
+		stmt.Where = expr
+	}
+	return stmt, nil
+}
+
+func (p *Parser) parseDelete() (Statement, error) {
+	p.advance() // DELETE
+	if _, err := p.expect(TokenFrom, "expected FROM after DELETE"); err != nil {
+		return nil, err
+	}
+	table, err := p.expect(TokenIdentifier, "expected table name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenWhere, "Part 6 DELETE requires a WHERE clause"); err != nil {
+		return nil, err
+	}
+	expr, err := p.parseEquality()
+	if err != nil {
+		return nil, err
+	}
+	return &amp;DeleteStmt{Table: table.Lexeme, Where: expr}, nil
+}
+
+func (p *Parser) parseEquality() (Expr, error) {
+	leftTok, err := p.expect(TokenIdentifier, "expected column name on left side of WHERE")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenEqual, "Part 7 supports only '=' comparisons"); err != nil {
+		return nil, err
+	}
+	lit, err := p.parseLiteral()
+	if err != nil {
+		return nil, err
+	}
+	return &amp;BinaryExpr{Left: &amp;IdentifierExpr{Name: leftTok.Lexeme}, Operator: TokenEqual, Right: &amp;LiteralExpr{Value: lit}}, nil
+}
+
+func (p *Parser) parseLiteral() (Literal, error) {
+	tok := p.advance()
+	switch tok.Kind {
+	case TokenNumber:
+		n, err := strconv.ParseInt(tok.Lexeme, 10, 64)
+		if err != nil {
+			return Literal{}, p.errorf(tok, "integer is outside int64 range")
+		}
+		return Literal{Kind: LiteralInt, Int: n}, nil
+	case TokenString:
+		return Literal{Kind: LiteralString, Text: tok.Lexeme}, nil
+	case TokenTrue:
+		return Literal{Kind: LiteralBool, Bool: true}, nil
+	case TokenFalse:
+		return Literal{Kind: LiteralBool, Bool: false}, nil
+	case TokenNull:
+		return Literal{Kind: LiteralNull}, nil
+	default:
+		return Literal{}, p.errorf(tok, "expected literal value")
+	}
+}
+
+func (p *Parser) peek() Token {
+	if p.pos &gt;= len(p.tokens) {
+		return Token{Kind: TokenEOF}
+	}
+	return p.tokens[p.pos]
+}
+func (p *Parser) advance() Token {
+	tok := p.peek()
+	if p.pos &lt; len(p.tokens) {
+		p.pos++
+	}
+	return tok
+}
+func (p *Parser) match(kind TokenKind) bool {
+	if p.peek().Kind == kind {
+		p.pos++
+		return true
+	}
+	return false
+}
+func (p *Parser) expect(kind TokenKind, message string) (Token, error) {
+	if p.peek().Kind != kind {
+		return Token{}, p.errorf(p.peek(), message)
+	}
+	return p.advance(), nil
+}
+func (p *Parser) errorf(tok Token, format string, args ...any) error {
+	return fmt.Errorf("parse error at byte %d near %q: %s", tok.Pos, tok.Lexeme, fmt.Sprintf(format, args...))
+}
+
+func DescribeAST(stmt Statement) string {
+	var b strings.Builder
+	var writeExpr func(Expr, string)
+	writeExpr = func(e Expr, indent string) {
+		switch x := e.(type) {
+		case *IdentifierExpr:
+			fmt.Fprintf(&amp;b, "%sIdentifier %s\n", indent, x.Name)
+		case *LiteralExpr:
+			fmt.Fprintf(&amp;b, "%sLiteral %s\n", indent, literalString(x.Value))
+		case *BinaryExpr:
+			fmt.Fprintf(&amp;b, "%sBinary %s\n", indent, x.Operator)
+			writeExpr(x.Left, indent+"  ")
+			writeExpr(x.Right, indent+"  ")
+		}
+	}
+	switch s := stmt.(type) {
+	case *CreateTableStmt:
+		fmt.Fprintf(&amp;b, "CreateTable %s\n", s.Name)
+		for _, c := range s.Columns {
+			nullText := "NULL"
+			if !c.Nullable {
+				nullText = "NOT NULL"
+			}
+			if c.Type.Type == TypeText {
+				fmt.Fprintf(&amp;b, "  Column %s TEXT(%d) %s\n", c.Name, c.Type.TextLen, nullText)
+			} else {
+				fmt.Fprintf(&amp;b, "  Column %s %s %s\n", c.Name, c.Type.Type, nullText)
+			}
+		}
+	case *CreateIndexStmt:
+		fmt.Fprintf(&amp;b, "CreateIndex %s ON %s(%s)\n", s.Name, s.Table, s.Column)
+	case *InsertStmt:
+		fmt.Fprintf(&amp;b, "Insert %s\n", s.Table)
+		for _, v := range s.Values {
+			fmt.Fprintf(&amp;b, "  %s\n", literalString(v))
+		}
+	case *SelectStmt:
+		fmt.Fprintf(&amp;b, "Select from %s\n", s.Table)
+		if s.All {
+			b.WriteString("  Columns *\n")
+		} else {
+			fmt.Fprintf(&amp;b, "  Columns %s\n", strings.Join(s.Columns, ", "))
+		}
+		if s.Where != nil {
+			b.WriteString("  Where\n")
+			writeExpr(s.Where, "    ")
+		}
+	case *DeleteStmt:
+		fmt.Fprintf(&amp;b, "Delete from %s\n  Where\n", s.Table)
+		writeExpr(s.Where, "    ")
+	case *BeginStmt:
+		b.WriteString("BeginTransaction\n")
+	case *CommitStmt:
+		b.WriteString("CommitTransaction\n")
+	case *RollbackStmt:
+		b.WriteString("RollbackTransaction\n")
+	}
+	return b.String()
+}
+
+func literalString(v Literal) string {
+	switch v.Kind {
+	case LiteralInt:
+		return fmt.Sprintf("INT %d", v.Int)
+	case LiteralString:
+		return fmt.Sprintf("STRING %q", v.Text)
+	case LiteralBool:
+		return fmt.Sprintf("BOOL %t", v.Bool)
+	case LiteralNull:
+		return "NULL"
+	default:
+		return "?"
+	}
+}</code></pre><h3>sql.go</h3><pre><code>package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type ExecutionResult struct {
+	Columns []string
+	Rows    [][]string
+	Message string
+}
+
+func ExecuteStatement(store *Store, stmt Statement) (ExecutionResult, error) {
+	switch stmt.(type) {
+	case *BeginStmt, *CommitStmt, *RollbackStmt, *SelectStmt:
+		return executeStatementBody(store, stmt)
+	}
+
+	// Mutating SQL outside an explicit transaction runs in its own automatic
+	// transaction. This is the simplest useful form of autocommit.
+	if store.InTransaction() {
+		return executeStatementBody(store, stmt)
+	}
+	if err := store.Begin(); err != nil {
+		return ExecutionResult{}, err
+	}
+	result, err := executeStatementBody(store, stmt)
+	if err != nil {
+		_ = store.Rollback()
+		return ExecutionResult{}, err
+	}
+	if err := store.Commit(); err != nil {
+		_ = store.Rollback()
+		return ExecutionResult{}, err
+	}
+	return result, nil
+}
+
+func executeStatementBody(store *Store, stmt Statement) (ExecutionResult, error) {
+	switch s := stmt.(type) {
+	case *CreateTableStmt:
+		cols := make([]Column, len(s.Columns))
+		for i, c := range s.Columns {
+			cols[i] = Column{Name: c.Name, Type: c.Type.Type, MaxLen: c.Type.TextLen, Nullable: c.Nullable}
+		}
+		t, err := store.CreateTable(s.Name, cols)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: fmt.Sprintf("created table=%s id=%d row_size=%d root_page=%d", t.Name, t.ID, t.Schema.RowSize, t.tree.RootPage())}, nil
+
+	case *CreateIndexStmt:
+		idx, err := store.CreateIndex(s.Name, s.Table, s.Column)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		t, _ := store.Table(s.Table)
+		return ExecutionResult{Message: fmt.Sprintf("created index=%s on %s(%s) root_page=%d", idx.Name, t.Name, t.Schema.Columns[idx.ColumnIndex].Name, idx.tree.RootPage())}, nil
+
+	case *InsertStmt:
+		t, err := store.Table(s.Table)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		if len(s.Values) != len(t.Schema.Columns) {
+			return ExecutionResult{}, fmt.Errorf("table %s expects %d values, got %d", t.Name, len(t.Schema.Columns), len(s.Values))
+		}
+		values := make([]Value, len(s.Values))
+		for i, lit := range s.Values {
+			v, err := literalToValue(t.Schema.Columns[i], lit)
+			if err != nil {
+				return ExecutionResult{}, err
+			}
+			values[i] = v
+		}
+		rowID, err := store.Insert(t.Name, values)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: fmt.Sprintf("inserted 1 row (rowid=%d)", rowID)}, nil
+
+	case *SelectStmt:
+		return executeSelect(store, s)
+
+	case *DeleteStmt:
+		return executeDelete(store, s)
+
+	case *BeginStmt:
+		if err := store.Begin(); err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: "transaction started"}, nil
+
+	case *CommitStmt:
+		if err := store.Commit(); err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: "transaction committed"}, nil
+
+	case *RollbackStmt:
+		if err := store.Rollback(); err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: "transaction rolled back"}, nil
+
+	default:
+		return ExecutionResult{}, fmt.Errorf("unsupported statement %T", stmt)
+	}
+}
+
+func literalToValue(c Column, lit Literal) (Value, error) {
+	if lit.Kind == LiteralNull {
+		if !c.Nullable {
+			return Value{}, fmt.Errorf("column %s is NOT NULL", c.Name)
+		}
+		return Value{Type: c.Type, Null: true}, nil
+	}
+	v := Value{Type: c.Type}
+	switch c.Type {
+	case TypeInt64:
+		if lit.Kind != LiteralInt {
+			return Value{}, fmt.Errorf("column %s expects INT", c.Name)
+		}
+		v.Int = lit.Int
+	case TypeBool:
+		if lit.Kind != LiteralBool {
+			return Value{}, fmt.Errorf("column %s expects BOOL", c.Name)
+		}
+		v.Bool = lit.Bool
+	case TypeText:
+		if lit.Kind != LiteralString {
+			return Value{}, fmt.Errorf("column %s expects a quoted TEXT literal", c.Name)
+		}
+		if len([]byte(lit.Text)) &gt; int(c.MaxLen) {
+			return Value{}, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+		}
+		v.Text = lit.Text
+	default:
+		return Value{}, fmt.Errorf("unsupported column type %s", c.Type)
+	}
+	return v, nil
+}
+
+func executeSelect(store *Store, s *SelectStmt) (ExecutionResult, error) {
+	t, err := store.Table(s.Table)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	projection, err := resolveProjection(t, s)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+
+	cursor, _, err := buildRowSource(store, t, s.Where)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+
+	result := ExecutionResult{Columns: projection.headers}
+	for {
+		row, ok, err := cursor.Next()
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		if !ok {
+			break
+		}
+		out := make([]string, len(projection.items))
+		for i, item := range projection.items {
+			if item.rowID {
+				out[i] = strconv.FormatInt(row.RowID, 10)
+			} else {
+				out[i] = FormatValue(row.Values[item.columnIndex])
+			}
+		}
+		result.Rows = append(result.Rows, out)
+	}
+	return result, nil
+}
+
+func executeDelete(store *Store, s *DeleteStmt) (ExecutionResult, error) {
+	t, err := store.Table(s.Table)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+
+	// The fast path stays fast: a rowid equality can go straight through
+	// the persistent B+tree without scanning the table.
+	if rowID, err := rowIDPredicate(s.Where); err == nil {
+		err := store.Delete(t.Name, rowID)
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrDeleted) {
+			return ExecutionResult{Message: "deleted 0 rows"}, nil
+		}
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: "deleted 1 row"}, nil
+	}
+
+	// General equality predicates are executed by a scan + filter cursor.
+	// First collect rowids, then mutate. This keeps the scan phase simple.
+	cursor, _, err := buildRowSource(store, t, s.Where)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	var ids []int64
+	for {
+		row, ok, err := cursor.Next()
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		if !ok {
+			break
+		}
+		ids = append(ids, row.RowID)
+	}
+	for _, id := range ids {
+		if err := store.Delete(t.Name, id); err != nil {
+			return ExecutionResult{}, fmt.Errorf("delete rowid %d: %w", id, err)
+		}
+	}
+	return ExecutionResult{Message: fmt.Sprintf("deleted %d row(s)", len(ids))}, nil
+}
+
+func buildRowSource(store *Store, t *Table, where Expr) (RowCursor, []string, error) {
+	if where == nil {
+		return NewTableScanCursor(store, t), []string{fmt.Sprintf("TableScan(table=%s)", t.Name)}, nil
+	}
+
+	if rowID, err := rowIDPredicate(where); err == nil {
+		return NewRowIDLookupCursor(store, t, rowID), []string{fmt.Sprintf("RowIDLookup(table=%s, rowid=%d)", t.Name, rowID)}, nil
+	}
+
+	pred, err := CompilePredicate(t, where)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !pred.rowID {
+		if idx := store.FindIndex(t, pred.columnIndex); idx != nil {
+			v, err := literalToValue(t.Schema.Columns[pred.columnIndex], pred.literal)
+			if err != nil {
+				return nil, nil, err
+			}
+			lookup, err := NewSecondaryIndexCursor(store, t, idx, v)
+			if err != nil {
+				return nil, nil, err
+			}
+			return NewFilterCursor(lookup, pred), []string{
+				fmt.Sprintf("Filter(recheck %s)", describeExprInline(where)),
+				fmt.Sprintf("SecondaryIndexLookup(index=%s, column=%s)", idx.Name, t.Schema.Columns[idx.ColumnIndex].Name),
+			}, nil
+		}
+	}
+	scan := NewTableScanCursor(store, t)
+	return NewFilterCursor(scan, pred), []string{
+		fmt.Sprintf("Filter(%s)", describeExprInline(where)),
+		fmt.Sprintf("TableScan(table=%s)", t.Name),
+	}, nil
+}
+
+func ExplainStatement(store *Store, stmt Statement) (string, error) {
+	switch s := stmt.(type) {
+	case *CreateTableStmt:
+		return fmt.Sprintf("CreateTable(table=%s)\n  -&gt; Catalog + B+tree allocation\n", s.Name), nil
+	case *CreateIndexStmt:
+		t, err := store.Table(s.Table)
+		if err != nil {
+			return "", err
+		}
+		col := -1
+		for i, c := range t.Schema.Columns {
+			if strings.EqualFold(c.Name, s.Column) {
+				col = i
+				break
+			}
+		}
+		if col &lt; 0 {
+			return "", fmt.Errorf("column %q not found in table %s", s.Column, t.Name)
+		}
+		return fmt.Sprintf("CreateIndex(index=%s, table=%s, column=%s)\n  -&gt; Scan existing rows\n  -&gt; Hash typed values\n  -&gt; Build secondary B+tree + rowid buckets\n  -&gt; Persist index catalog entry\n", s.Name, t.Name, t.Schema.Columns[col].Name), nil
+	case *InsertStmt:
+		t, err := store.Table(s.Table)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Insert(table=%s)\n  -&gt; EncodeRow(row_size=%d)\n  -&gt; AppendDataRow\n  -&gt; BTreeInsert(rowid -&gt; pointer)\n", t.Name, t.Schema.RowSize), nil
+	case *SelectStmt:
+		t, err := store.Table(s.Table)
+		if err != nil {
+			return "", err
+		}
+		p, err := resolveProjection(t, s)
+		if err != nil {
+			return "", err
+		}
+		_, source, err := buildRowSource(store, t, s.Where)
+		if err != nil {
+			return "", err
+		}
+		var b strings.Builder
+		fmt.Fprintf(&amp;b, "Project(%s)\n", strings.Join(p.headers, ", "))
+		for _, line := range source {
+			fmt.Fprintf(&amp;b, "  -&gt; %s\n", line)
+		}
+		return b.String(), nil
+	case *DeleteStmt:
+		t, err := store.Table(s.Table)
+		if err != nil {
+			return "", err
+		}
+		if rowID, err := rowIDPredicate(s.Where); err == nil {
+			return fmt.Sprintf("Delete(table=%s)\n  -&gt; RowIDLookup(rowid=%d)\n  -&gt; TombstoneRow\n", t.Name, rowID), nil
+		}
+		_, source, err := buildRowSource(store, t, s.Where)
+		if err != nil {
+			return "", err
+		}
+		var b strings.Builder
+		fmt.Fprintf(&amp;b, "Delete(table=%s)\n", t.Name)
+		for _, line := range source {
+			fmt.Fprintf(&amp;b, "  -&gt; %s\n", line)
+		}
+		b.WriteString("  -&gt; TombstoneMatchingRows\n")
+		return b.String(), nil
+	case *BeginStmt:
+		return "BeginTransaction\n  -&gt; Create rollback journal\n  -&gt; Remember original database length\n", nil
+	case *CommitStmt:
+		return "CommitTransaction\n  -&gt; Journal before-images for overwritten pages\n  -&gt; Flush + fsync database\n  -&gt; Delete rollback journal\n", nil
+	case *RollbackStmt:
+		return "RollbackTransaction\n  -&gt; Restore journaled before-images\n  -&gt; Truncate newly allocated pages\n  -&gt; Reload catalog state\n", nil
+	default:
+		return "", fmt.Errorf("cannot explain statement %T", stmt)
+	}
+}
+
+func describeExprInline(expr Expr) string {
+	b, ok := expr.(*BinaryExpr)
+	if !ok {
+		return "expression"
+	}
+	left, _ := b.Left.(*IdentifierExpr)
+	right, _ := b.Right.(*LiteralExpr)
+	if left == nil || right == nil {
+		return "expression"
+	}
+	var value string
+	switch right.Value.Kind {
+	case LiteralInt:
+		value = strconv.FormatInt(right.Value.Int, 10)
+	case LiteralString:
+		value = strconv.Quote(right.Value.Text)
+	case LiteralBool:
+		value = strconv.FormatBool(right.Value.Bool)
+	case LiteralNull:
+		value = "NULL"
+	default:
+		value = "?"
+	}
+	return fmt.Sprintf("%s = %s", left.Name, value)
+}
+
+type projectionItem struct {
+	rowID       bool
+	columnIndex int
+}
+type resolvedProjection struct {
+	headers []string
+	items   []projectionItem
+}
+
+func resolveProjection(t *Table, s *SelectStmt) (resolvedProjection, error) {
+	if s.All {
+		p := resolvedProjection{headers: []string{"rowid"}, items: []projectionItem{{rowID: true}}}
+		for i, c := range t.Schema.Columns {
+			p.headers = append(p.headers, c.Name)
+			p.items = append(p.items, projectionItem{columnIndex: i})
+		}
+		return p, nil
+	}
+	var p resolvedProjection
+	for _, name := range s.Columns {
+		if strings.EqualFold(name, "rowid") {
+			p.headers = append(p.headers, "rowid")
+			p.items = append(p.items, projectionItem{rowID: true})
+			continue
+		}
+		idx := -1
+		for i, c := range t.Schema.Columns {
+			if strings.EqualFold(c.Name, name) {
+				idx = i
+				name = c.Name
+				break
+			}
+		}
+		if idx &lt; 0 {
+			return resolvedProjection{}, fmt.Errorf("column %q not found in table %s", name, t.Name)
+		}
+		p.headers = append(p.headers, name)
+		p.items = append(p.items, projectionItem{columnIndex: idx})
+	}
+	return p, nil
+}
+
+func rowIDPredicate(expr Expr) (int64, error) {
+	b, ok := expr.(*BinaryExpr)
+	if !ok || b.Operator != TokenEqual {
+		return 0, fmt.Errorf("predicate must be an equality")
+	}
+	left, ok := b.Left.(*IdentifierExpr)
+	if !ok || !strings.EqualFold(left.Name, "rowid") {
+		return 0, fmt.Errorf("left side must be rowid")
+	}
+	right, ok := b.Right.(*LiteralExpr)
+	if !ok || right.Value.Kind != LiteralInt {
+		return 0, fmt.Errorf("right side must be an integer")
+	}
+	if right.Value.Int &lt; 1 {
+		return 0, fmt.Errorf("rowid must be &gt;= 1")
+	}
+	return right.Value.Int, nil
+}</code></pre><h3>main.go</h3><pre><code>package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+func printResult(r ExecutionResult) {
+	if r.Message != "" {
+		fmt.Println(r.Message)
+	}
+	if len(r.Columns) == 0 {
+		return
+	}
+	fmt.Println(strings.Join(r.Columns, " | "))
+	for _, row := range r.Rows {
+		fmt.Println(strings.Join(row, " | "))
+	}
+	fmt.Printf("(%d row(s))\n", len(r.Rows))
+}
+
+func handleMeta(store *Store, line string) bool {
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return false
+	}
+	cmd := strings.ToLower(parts[0])
+	switch cmd {
+	case ".quit", ".exit":
+		return true
+	case ".help":
+		fmt.Println("SQL:")
+		fmt.Println("  CREATE TABLE t (name TEXT(40) NOT NULL, age INT, active BOOL);")
+		fmt.Println("  INSERT INTO t VALUES ('alice', 30, true);")
+		fmt.Println("  CREATE INDEX idx_t_age ON t(age);")
+		fmt.Println("  SELECT * FROM t;")
+		fmt.Println("  SELECT rowid, name FROM t WHERE rowid = 1;")
+		fmt.Println("  DELETE FROM t WHERE rowid = 1;")
+		fmt.Println("  BEGIN;  COMMIT;  ROLLBACK;")
+		fmt.Println("Meta commands:")
+		fmt.Println("  .tables | .schema &lt;table&gt; | .tree &lt;table&gt; | .datapages &lt;table&gt;")
+		fmt.Println("  .indexes [table] | .indextree &lt;index&gt; | .indexbuckets &lt;index&gt;")
+		fmt.Println("  .catalogpages | .stats | .flush | .verify | .pageinfo &lt;n&gt;")
+		fmt.Println("  .tx | .journal | .crash")
+		fmt.Println("  .tokens &lt;sql&gt; | .ast &lt;sql&gt; | .explain &lt;sql&gt; | .quit")
+	case ".tables":
+		tables := store.Tables()
+		if len(tables) == 0 {
+			fmt.Println("(no tables)")
+			break
+		}
+		for _, t := range tables {
+			fmt.Printf("id=%d name=%s columns=%d row_size=%d root_page=%d next_rowid=%d\n", t.ID, t.Name, len(t.Schema.Columns), t.Schema.RowSize, t.tree.RootPage(), t.nextRowID)
+		}
+	case ".schema":
+		if len(parts) != 2 {
+			fmt.Println("usage: .schema &lt;table&gt;")
+			break
+		}
+		text, err := store.DescribeTable(parts[1])
+		if err != nil {
+			fmt.Println("schema error:", err)
+		} else {
+			fmt.Print(text)
+		}
+	case ".tree":
+		if len(parts) != 2 {
+			fmt.Println("usage: .tree &lt;table&gt;")
+			break
+		}
+		text, err := store.TreeDump(parts[1])
+		if err != nil {
+			fmt.Println("tree error:", err)
+		} else {
+			fmt.Print(text)
+		}
+	case ".datapages":
+		if len(parts) != 2 {
+			fmt.Println("usage: .datapages &lt;table&gt;")
+			break
+		}
+		pages, err := store.DataChain(parts[1])
+		if err != nil {
+			fmt.Println("data pages error:", err)
+		} else {
+			fmt.Println("data_pages=", pages)
+		}
+	case ".catalogpages":
+		pages, err := store.CatalogPages()
+		if err != nil {
+			fmt.Println("catalog pages error:", err)
+		} else {
+			fmt.Println("catalog_pages=", pages)
+		}
+	case ".indexes":
+		var indexes []*SecondaryIndex
+		if len(parts) == 1 {
+			indexes = store.Indexes()
+		} else if len(parts) == 2 {
+			t, err := store.Table(parts[1])
+			if err != nil {
+				fmt.Println("indexes error:", err)
+				break
+			}
+			indexes = store.IndexesForTable(t)
+		} else {
+			fmt.Println("usage: .indexes [table]")
+			break
+		}
+		if len(indexes) == 0 {
+			fmt.Println("(no secondary indexes)")
+			break
+		}
+		for _, idx := range indexes {
+			t, _ := store.tableByID(idx.TableID)
+			fmt.Printf("id=%d name=%s table=%s column=%s root_page=%d\n", idx.ID, idx.Name, t.Name, t.Schema.Columns[idx.ColumnIndex].Name, idx.tree.RootPage())
+		}
+	case ".indextree":
+		if len(parts) != 2 {
+			fmt.Println("usage: .indextree &lt;index&gt;")
+			break
+		}
+		text, err := store.IndexDump(parts[1])
+		if err != nil {
+			fmt.Println("index tree error:", err)
+		} else {
+			fmt.Print(text)
+		}
+	case ".indexbuckets":
+		if len(parts) != 2 {
+			fmt.Println("usage: .indexbuckets &lt;index&gt;")
+			break
+		}
+		pages, err := store.IndexBucketPages(parts[1])
+		if err != nil {
+			fmt.Println("index bucket error:", err)
+		} else {
+			fmt.Println("index_bucket_pages=", pages)
+		}
+	case ".stats":
+		st := store.Stats()
+		fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d validation_failures=%d\n", st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites, st.ValidationFailures)
+	case ".tx":
+		if store.InTransaction() {
+			fmt.Println("transaction=active")
+		} else {
+			fmt.Println("transaction=none (autocommit mode)")
+		}
+	case ".journal":
+		info, err := store.JournalInfo()
+		if err != nil {
+			fmt.Println("journal error:", err)
+		} else if !info.Exists {
+			fmt.Println("journal=absent")
+		} else {
+			fmt.Printf("journal=present original_pages=%d entries=%d bytes=%d\n", info.OriginalPages, info.Entries, info.Size)
+		}
+	case ".crash":
+		fmt.Println("simulating process crash now; deferred Close will NOT run")
+		os.Exit(99)
+	case ".flush":
+		if err := store.Flush(); err != nil {
+			fmt.Println("flush error:", err)
+		} else {
+			fmt.Println("dirty pages sealed, checksummed, and flushed")
+		}
+	case ".verify":
+		pages, err := store.Verify()
+		if err != nil {
+			fmt.Println("verify error:", err)
+		} else {
+			fmt.Printf("verified %d pages\n", pages)
+		}
+	case ".pageinfo":
+		if len(parts) != 2 {
+			fmt.Println("usage: .pageinfo &lt;page-number&gt;")
+			break
+		}
+		n, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			fmt.Println("page number must be a non-negative integer")
+			break
+		}
+		info, err := store.PageInfo(n)
+		if err != nil {
+			fmt.Println("pageinfo error:", err)
+		} else {
+			fmt.Printf("page=%d type=%s generation=%d checksum=%08x\n", info.Number, info.Type, info.Generation, info.Checksum)
+		}
+	case ".tokens":
+		sql := strings.TrimSpace(strings.TrimPrefix(line, parts[0]))
+		if sql == "" {
+			fmt.Println("usage: .tokens &lt;sql&gt;")
+			break
+		}
+		tokens, err := Lex(sql)
+		if err != nil {
+			fmt.Println(err)
+			break
+		}
+		for _, tok := range tokens {
+			fmt.Printf("%-10s pos=%-3d lexeme=%q\n", tok.Kind, tok.Pos, tok.Lexeme)
+		}
+	case ".explain":
+		sql := strings.TrimSpace(strings.TrimPrefix(line, parts[0]))
+		if sql == "" {
+			fmt.Println("usage: .explain &lt;sql&gt;")
+			break
+		}
+		stmt, err := ParseSQL(sql)
+		if err != nil {
+			fmt.Println(err)
+			break
+		}
+		plan, err := ExplainStatement(store, stmt)
+		if err != nil {
+			fmt.Println("explain error:", err)
+		} else {
+			fmt.Print(plan)
+		}
+	case ".ast":
+		sql := strings.TrimSpace(strings.TrimPrefix(line, parts[0]))
+		if sql == "" {
+			fmt.Println("usage: .ast &lt;sql&gt;")
+			break
+		}
+		stmt, err := ParseSQL(sql)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Print(DescribeAST(stmt))
+		}
+	default:
+		fmt.Println("unknown meta command; try .help")
+	}
+	return false
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("usage: minidb &lt;database-file&gt;")
+		os.Exit(1)
+	}
+	store, err := Open(os.Args[1])
+	if err != nil {
+		fmt.Println("open error:", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	fmt.Println("MiniSQLite Part 9 — Secondary indexes and planning")
+	fmt.Println("Type .help for examples. SQL statements may end with ';'.")
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minidb&gt; ")
+		if !scanner.Scan() {
+			fmt.Println()
+			break
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, ".") {
+			if handleMeta(store, line) {
+				return
+			}
+			continue
+		}
+		stmt, err := ParseSQL(line)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		result, err := ExecuteStatement(store, stmt)
+		if err != nil {
+			fmt.Println("execution error:", err)
+			continue
+		}
+		printResult(result)
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("input error:", err)
+	}
+}</code></pre></div><h2 id="s35">35. Build and run the finished Part 9 project</h2>
+<pre><code>gofmt -w *.go
+go test ./...
+go build -o minidb .
+./minidb demo.db</code></pre>
+<p>A compact end-to-end session:</p><pre><code>CREATE TABLE users (name TEXT(40) NOT NULL, age INT NOT NULL, active BOOL NOT NULL);
+INSERT INTO users VALUES ('alice', 30, true);
+INSERT INTO users VALUES ('bob', 25, false);
+INSERT INTO users VALUES ('carol', 30, true);
+
+.explain SELECT rowid, name FROM users WHERE age = 30;
+CREATE INDEX idx_users_age ON users(age);
+.explain SELECT rowid, name FROM users WHERE age = 30;
+SELECT rowid, name FROM users WHERE age = 30;
+.indexes
+.indextree idx_users_age
+.indexbuckets idx_users_age
+.verify</code></pre>
+<p>The same SQL query should move from <code>TableScan</code> to <code>SecondaryIndexLookup</code> after index creation and should continue using that plan after restart.</p>
+<h2 id="s36">36. What you should understand before leaving Part 9</h2>
+<p>You should now be able to explain, without looking at code, why each of these statements is true:</p>
+<ul><li>A primary rowid B+tree does not automatically speed up predicates on arbitrary columns.</li><li>Secondary keys can have duplicates, so one search key may need many rowids.</li><li>Our B+tree remains unique-key by mapping one typed hash to a bucket chain.</li><li>A secondary-index hit is rechecked against the real predicate because hashes can collide.</li><li>An index must be persisted in metadata, rebuilt from that metadata on restart, and maintained on every relevant mutation.</li><li>The planner can choose a different physical cursor pipeline for the same parsed AST.</li><li>Adding an index speeds selected reads by making writes and transactions more expensive.</li><li>Part 8 recovery automatically protects index pages because journaling happens below the index layer.</li></ul>
+<div class="box insight"><strong>The new pain that leads to Part 10</strong><p>Our storage engine can now choose useful access paths, but it still behaves like a single-process database. Multiple readers and writers, lock coordination, WAL-style concurrency, durability tuning, and realistic benchmarks are now the obvious next problems. That is exactly where Part 10 should begin.</p></div>
+</article><nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 9 of 10</span></div><div class="series-links"><a href="part-08.html">← Part 8</a><a href="index.html">Series home</a><a href="part-10.html">Part 10 →</a></div></nav></body></html>

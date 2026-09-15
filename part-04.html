@@ -1,0 +1,1758 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MiniSQLite Part 4 — B-Tree Indexing</title>
+<style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb;--purple:#6d4aff;--purple2:#f1edff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em}h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em}h3{font-size:1.28rem;margin:36px 0 12px}h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:840px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}.purplebox{background:var(--purple2);border-color:var(--purple)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0;white-space:pre-wrap}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:22px 0}.flowbox{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;background:#fbfcfe}.flowarrow{font-size:1.4rem;color:#64748b}.muted{color:var(--muted)}
+.tree{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px;margin:24px 0;text-align:center}.node{display:inline-block;border:2px solid #64748b;border-radius:10px;background:white;padding:9px 14px;margin:7px;font-family:Consolas,monospace;font-size:.9rem}.leaf{border-color:#0d7a54;background:#eefbf5}.internal{border-color:#2463eb;background:#eef4ff}.arrow{color:#64748b;font-weight:800;margin:0 5px}.split{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:18px 0}.split > div{border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center;background:#fbfcfe}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}.flow,.split{grid-template-columns:1fr}.flowarrow{transform:rotate(90deg)}h1{font-size:2.15rem}}
+</style>
+<link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-04.html" rel="canonical"/><meta content="Separate logical row IDs from physical locations and build a persistent B+tree for fast lookup." name="description"/></head>
+<body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 4 of 10</span></div><div class="series-links"><a href="part-03.html">← Part 3</a><a href="index.html">Series home</a><a href="part-05.html">Part 5 →</a></div></nav><article>
+<div class="kicker">MiniSQLite · Part 4 · First-principles database engineering</div>
+<h1>B-Tree Indexing</h1>
+<p class="subtitle">Part 3 taught MiniSQLite not to trust arbitrary bytes. Part 4 tackles a different problem: finding one row should not require examining every row. We will replace the toy “ID tells us the physical slot” trick with a real persistent B+tree. By the end, a logical key will lead us through a small number of index pages to a physical record pointer, the tree will split as it grows, and the index will still be there after the process restarts.</p>
+<div class="box teacher"><strong>How to use this chapter</strong>Build this as a copy of Part 3. Do not jump to the complete files at the end. The point of Part 4 is not to memorize a B+tree implementation; it is to understand why every field and every split exists. We will first expose the limitation in our Part 3 addressing trick, draw the tree on paper, design its pages, implement lookup, then insertion, then splitting, then persistence. Each major step ends with something you can run or inspect.</div>
+<div class="toc"><h3>Table of contents</h3><ol>
+<li><a href="#setup">Project setup: preserve Part 3</a></li>
+<li><a href="#pain">The performance problem we are actually solving</a></li>
+<li><a href="#special">Why Part 3's O(1) GET was a special trick</a></li>
+<li><a href="#index">What an index really is</a></li>
+<li><a href="#balanced">Why a balanced tree?</a></li>
+<li><a href="#btree-vs-bplus">B-tree vs B+tree</a></li>
+<li><a href="#format">Design the Part 4 file format</a></li>
+<li><a href="#heap">Move rows into heap/data pages</a></li>
+<li><a href="#pointer">Introduce record pointers</a></li>
+<li><a href="#node-layout">Design leaf and internal node pages</a></li>
+<li><a href="#pager">Let the pager allocate mixed page types</a></li>
+<li><a href="#leaf-read">Read and write a leaf node</a></li>
+<li><a href="#lookup">Implement B+tree lookup</a></li>
+<li><a href="#insert-leaf">Insert into a non-full leaf</a></li>
+<li><a href="#leaf-split">Split a full leaf</a></li>
+<li><a href="#internal">Internal nodes: separators and children</a></li>
+<li><a href="#root-split">Create a new root</a></li>
+<li><a href="#recursive">Recursive internal splits</a></li>
+<li><a href="#leaf-chain">Leaf chaining and ordered scans</a></li>
+<li><a href="#store">Wire the index into Store</a></li>
+<li><a href="#labs">Labs: watch the tree grow</a></li>
+<li><a href="#complexity">What changed asymptotically?</a></li>
+<li><a href="#delete">Why DELETE is intentionally incomplete</a></li>
+<li><a href="#reliability">Reliability problem we made more obvious</a></li>
+<li><a href="#exercises">Exercises</a></li>
+<li><a href="#complete">Complete program</a></li>
+<li><a href="#understand">What you should understand</a></li>
+</ol></div>
+<h2 id="setup">1. Project setup: preserve Part 3</h2>
+<p>Part 4 changes both the database format and the storage architecture. The easiest way to learn is to keep Part 3 intact and make a new project directory.</p>
+<h3><span class="step">Step 0A</span> Copy the project</h3>
+<pre><code>cp -R minisqlite-part3 minisqlite-part4
+cd minisqlite-part4
+rm -f minidb *.db</code></pre>
+<p>PowerShell:</p>
+<pre><code>Copy-Item -Recurse minisqlite-part3 minisqlite-part4
+Set-Location minisqlite-part4
+Remove-Item minidb, *.db -ErrorAction SilentlyContinue</code></pre>
+<p>Before changing anything, build the copy. This proves that any later failure came from Part 4 changes rather than a broken starting point.</p>
+<pre><code>gofmt -w *.go
+go build -o minidb .</code></pre>
+<h3><span class="step">Step 0B</span> Add one source file for the tree</h3>
+<pre><code>touch btree.go</code></pre>
+<div class="filetree">minisqlite-part4/
+├── go.mod
+├── format.go   ← page header + checksum + page types
+├── pager.go    ← page cache, validated reads, page allocation
+├── btree.go    ← persistent B+tree
+├── store.go    ← heap rows + metadata + index integration
+└── main.go     ← CLI + TREE + TRACEGET</div>
+<div class="box insight"><strong>Separation of responsibilities</strong><code>btree.go</code> should know keys, child pointers, record pointers, node splits, and traversal. It should not know how a user's email is encoded. <code>store.go</code> should know records. <code>pager.go</code> should know pages. Keeping those boundaries visible is part of the lesson.</div>
+<h2 id="pain">2. The performance problem we are actually solving</h2>
+<p>Suppose a table contains one million users and you ask for one row. The most general thing a database can do is scan rows until it finds the one you asked for.</p>
+<div class="math">row 1 → not it
+row 2 → not it
+row 3 → not it
+...
+row 999,999 → not it
+row 1,000,000 → found it</div>
+<p>That is a <strong>full scan</strong>. It is simple and often useful, but point lookup cost grows with the number of rows. If there are <code>n</code> rows, a scan is <code>O(n)</code>.</p>
+<p>Part 3 appeared to avoid this problem for <code>GET id</code>. It computed the physical location directly from the ID. That was useful for learning page arithmetic, but it also hid the real indexing problem.</p>
+<h2 id="special">3. Why Part 3's O(1) GET was a special trick</h2>
+<p>In Part 3, record 16 could be found with arithmetic because the system promised that IDs and physical slots would forever correspond:</p>
+<pre><code>zeroBased := id - 1
+pageNum   := 1 + zeroBased / SlotsPerPage
+slot      := zeroBased % SlotsPerPage</code></pre>
+<p>That is fast, but notice what we secretly promised:</p>
+<ul><li>record ID 1 permanently belongs near the beginning of the file;</li><li>rows cannot move freely;</li><li>all data pages must occupy a predictable region;</li><li>other page types make the mapping awkward;</li><li>reusing free space becomes difficult;</li><li>variable-length rows would break the neat slot formula.</li></ul>
+<div class="box question"><strong>So was Part 3 wrong?</strong>No. It was deliberately simple. Good systems courses often begin with a design that makes one concept obvious, then remove that simplification when it starts blocking the next concept. Part 4 is the moment where “logical identity” and “physical location” become separate ideas.</div>
+<p>From now on, ID 42 means <em>the key 42</em>. It no longer means “derive byte offset X.” An index will tell us where the corresponding record currently lives.</p>
+<h2 id="index">4. What an index really is</h2>
+<p>An index is another data structure that stores a relationship between a searchable key and where to find the underlying row.</p>
+<div class="flow"><div class="flowbox"><strong>Logical key</strong><br/><code>id = 42</code></div><div class="flowarrow">→</div><div class="flowbox"><strong>B+tree</strong><br/>search index pages</div><div class="flowarrow">→</div><div class="flowbox"><strong>Record pointer</strong><br/><code>(page=19, slot=4)</code></div></div>
+<p>The index is not the row itself. A leaf entry can be tiny: an eight-byte key plus a physical pointer. The full name, email, age, tombstone byte, and padding remain in a data page.</p>
+<p>This separation buys flexibility. A data page can appear at page 2 while index pages appear at pages 1, 3, 4, and 7. The logical key still works because the index remembers the physical location.</p>
+<h2 id="balanced">5. Why a balanced tree?</h2>
+<p>We need a structure that is searchable, persists naturally in pages, and stays shallow as it grows.</p>
+<table><thead><tr><th>Structure</th><th>Lookup</th><th>Problem for our database</th></tr></thead><tbody>
+<tr><td>Unsorted list</td><td><code>O(n)</code></td><td>Full scan.</td></tr>
+<tr><td>Sorted array</td><td><code>O(log n)</code> search</td><td>Insertion may shift many entries; awkward across pages.</td></tr>
+<tr><td>Hash table</td><td>Average <code>O(1)</code></td><td>Excellent for equality, but no natural sorted range traversal; persistence and resizing are a separate design.</td></tr>
+<tr><td>Binary search tree</td><td>Potentially <code>O(log n)</code></td><td>Can become a long chain; two children per node wastes disk-I/O opportunities.</td></tr>
+<tr><td><strong>B+tree</strong></td><td><strong><code>O(log n)</code></strong></td><td>Designed to have high fanout and page-sized nodes; excellent fit for storage engines.</td></tr>
+</tbody></table>
+<p>The disk-oriented insight is <strong>fanout</strong>. If one internal page can point to many children, each page read eliminates a large portion of the search space. A tree with hundreds of children per internal page stays extremely shallow even with huge row counts.</p>
+<h2 id="btree-vs-bplus">6. B-tree vs B+tree</h2>
+<p>The names are annoyingly similar. For this project, remember one practical distinction.</p>
+<div class="grid"><div class="card"><h4>B-tree</h4><p>Keys and associated records/pointers may appear in internal nodes as well as leaves.</p></div><div class="card"><h4>B+tree</h4><p>Internal nodes guide navigation. Actual key→record-pointer entries live in leaves. Leaves are linked for ordered traversal.</p></div></div>
+<div class="tree"><div><span class="node internal">[ 5 | 9 ]</span></div><div>↙     ↓     ↘</div><div><span class="node leaf">[1 2 3 4]</span><span class="node leaf">[5 6 7 8]</span><span class="node leaf">[9 10 11]</span></div><div class="mini">leaf 1 → leaf 2 → leaf 3</div></div>
+<p>For key 7, the internal page tells us to follow the middle child. Only the leaf contains the pointer to the actual row. For a scan, we find the leftmost leaf once and then follow sibling links across the bottom.</p>
+<h2 id="format">7. Design the Part 4 file format before coding</h2>
+<p>We keep Part 3's 4096-byte pages, common 32-byte page header, generation counter, and checksum. What changes is the set of page types.</p>
+<pre><code>type PageType uint8
+
+const (
+    PageTypeMetadata      PageType = 1
+    PageTypeData          PageType = 2
+    PageTypeBTreeLeaf     PageType = 3
+    PageTypeBTreeInternal PageType = 4
+)</code></pre>
+<p>The file can now contain different logical structures side by side:</p>
+<div class="filetree">page 0   metadata
+page 1   B+tree leaf (initial root)
+page 2   data page
+page 3   B+tree leaf created by split
+page 4   B+tree internal root
+page 5   B+tree leaf
+page 6   another data page
+...</div>
+<p>This is precisely why we can no longer say “ID 31 must live on physical page 3.” Physical page numbers are now allocated to whichever structure needs a page next.</p>
+<h2 id="heap">8. Move rows into heap/data pages</h2>
+<p>A <strong>heap page</strong> here simply means a page that stores rows without being sorted by key. We append records into the current last data page until it fills, then allocate another data page.</p>
+<p>We reserve a little payload header inside each data page:</p>
+<div class="math">bytes 0..31    common reliable page header
+bytes 32..33   slot count
+bytes 34..39   reserved
+bytes 40..47   next data page number
+bytes 48..63   reserved
+bytes 64..     fixed-size records</div>
+<p>With 256-byte records:</p>
+<div class="math">(4096 - 64) / 256 = 15 complete record slots per data page</div>
+<p>Notice the important conceptual change. The slot number is now local to a page. There is no formula that converts ID directly into this page and slot.</p>
+<h3><span class="step">Step 1</span> Track how many slots are used</h3>
+<pre><code>func dataSlotCount(page *Page) int {
+    return int(binary.LittleEndian.Uint16(
+        page.Data[dataSlotCountOffset : dataSlotCountOffset+2],
+    ))
+}</code></pre>
+<p>When a row is appended, we place it at <code>dataRecordsOffset + slot*RecordSize</code>, increment the slot count, and mark the page dirty.</p>
+<div class="checkpoint"><h4>Checkpoint</h4><p>At this stage, do not build the tree yet. Be sure you can explain why “record 23” and “slot 23” are no longer synonyms. One is a logical key. The other is a physical position inside one specific page.</p></div>
+<h2 id="pointer">9. Introduce record pointers</h2>
+<p>Once logical IDs stop encoding location, we need a small value that can identify a physical row.</p>
+<pre><code>type RecordPointer struct {
+    Page uint64
+    Slot uint16
+}</code></pre>
+<p>A pointer such as <code>{Page: 12, Slot: 3}</code> means: ask the pager for page 12, verify that it is a data page, then read the fourth 256-byte record beginning at the data-record area.</p>
+<div class="box insight"><strong>The B+tree maps keys to these pointers.</strong>The index does not care about names or emails. For Part 4 the key is an <code>int64</code> ID, and the value is a <code>RecordPointer</code>.</div>
+<h2 id="node-layout">10. Design leaf and internal node pages</h2>
+<p>Every tree page already has the 32-byte reliable page header from Part 3. We now define a tiny node header in the payload.</p>
+<div class="math">byte 32..33   number of keys
+byte 34..39   reserved
+byte 40..47   special pointer
+byte 48..     entries</div>
+<p>The meaning of the special pointer depends on node type:</p>
+<ul><li>in a <strong>leaf</strong>, bytes 40..47 store the next leaf page;</li><li>in an <strong>internal node</strong>, bytes 40..47 store the first child page.</li></ul>
+<h3>Leaf entry</h3>
+<div class="math">8 bytes   key (int64)
+8 bytes   data page number
+2 bytes   slot number
+6 bytes   padding/reserved
+--------------------------
+24 bytes per leaf entry</div>
+<h3>Internal entry</h3>
+<div class="math">8 bytes   separator key
+8 bytes   right child page
+--------------------------
+16 bytes per internal entry</div>
+<p>An internal node also stores its first child separately. That gives the classic representation:</p>
+<div class="math">child0, key0, child1, key1, child2, key2, child3 ...</div>
+<h3>Why are we wasting most of the page?</h3>
+<p>Our physical layouts could hold far more entries, but Part 4 deliberately sets:</p>
+<pre><code>const BTreeMaxKeys = 7</code></pre>
+<p>This is a <strong>teaching fanout</strong>. With seven keys, you can trigger a leaf split after only eight inserts and an internal split without generating tens of thousands of rows. A production implementation would calculate capacity from the 4096-byte page and use most of it.</p>
+<div class="box warning"><strong>Do not confuse the teaching limit with a B+tree rule.</strong>B+trees are valuable partly because real nodes have large fanout. We are shrinking the fanout only so the tree's structural changes are visible during a short terminal session.</div>
+<h2 id="pager">11. Let the pager allocate mixed page types</h2>
+<p>Part 3 could calculate some page positions in advance. Part 4 needs a generic allocator: “give me the next physical page and make it this type.”</p>
+<pre><code>func (p *Pager) NewPage(pageType PageType) (*Page, error) {
+    pageNum := p.numPages
+
+    page := &amp;Page{
+        Number: pageNum,
+        Type:   pageType,
+        Data:   make([]byte, PageSize),
+        dirty:  true,
+    }
+
+    if err := initializePageData(page.Data, pageNum, pageType); err != nil {
+        return nil, err
+    }
+
+    p.pages[pageNum] = page
+    p.numPages++
+    return page, nil
+}</code></pre>
+<p>Allocation is now append-only: the next page number is simply the current page count. A leaf split may allocate page 3; a new data page might later become page 6. The pager does not care. It validates and caches all of them using the common page header.</p>
+<h2 id="leaf-read">12. Read and write a leaf node</h2>
+<p>Before writing tree algorithms, build boring serialization helpers. They are where persistence becomes real.</p>
+<pre><code>type leafEntry struct {
+    Key int64
+    Ptr RecordPointer
+}</code></pre>
+<p>Reading a leaf means: read its key count, then decode that many fixed-size entries from byte 48 onward.</p>
+<pre><code>func readLeafEntries(page *Page) []leafEntry {
+    n := keyCount(page)
+    out := make([]leafEntry, 0, n)
+
+    for i := 0; i &lt; n; i++ {
+        off := nodeEntriesOffset + i*leafEntrySize
+        out = append(out, leafEntry{
+            Key: int64(binary.LittleEndian.Uint64(page.Data[off:off+8])),
+            Ptr: RecordPointer{
+                Page: binary.LittleEndian.Uint64(page.Data[off+8:off+16]),
+                Slot: binary.LittleEndian.Uint16(page.Data[off+16:off+18]),
+            },
+        })
+    }
+    return out
+}</code></pre>
+<p>Writing is the inverse: clear the old entry area, serialize the sorted entries, write the count, and mark the page dirty.</p>
+<div class="box teacher"><strong>Why write helpers before algorithms?</strong>If node encoding is mixed directly into split logic, every bug looks like a tree bug. Keeping “bytes ↔ entries” separate means later code can reason in terms of slices of keys and pointers.</div>
+<h2 id="lookup">13. Implement lookup before insertion</h2>
+<p>Searching is the simplest complete tree operation. Start at the root and repeat:</p>
+<ol><li>If this is an internal node, choose one child based on separator keys.</li><li>If this is a leaf, binary-search its sorted entries.</li><li>If the key is present, return the record pointer.</li></ol>
+<h3>How separator keys work</h3>
+<p>Suppose an internal node contains:</p>
+<div class="tree"><span class="node internal">children=[A B C]   keys=[5 9]</span></div>
+<p>Interpret the separators like this:</p>
+<div class="math">key &lt; 5       → child A
+5 ≤ key &lt; 9   → child B
+key ≥ 9       → child C</div>
+<p>Our loop expresses exactly that rule:</p>
+<pre><code>childIndex := 0
+for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+    childIndex++
+}
+pageNum = children[childIndex]</code></pre>
+<h3>At the leaf, use binary search</h3>
+<pre><code>lo, hi := 0, len(entries)
+for lo &lt; hi {
+    mid := lo + (hi-lo)/2
+    if entries[mid].Key &lt; key {
+        lo = mid + 1
+    } else {
+        hi = mid
+    }
+}</code></pre>
+<p>This search is cheap inside a page. The expensive unit is usually the page access, which is exactly why a shallow tree matters.</p>
+<h3>Add observability: count page visits</h3>
+<p><code>Lookup</code> also counts how many index pages it visited. That lets the CLI provide:</p>
+<pre><code>minidb&gt; TRACEGET 120
+id=120 name=u120 email=u120@x age=30
+index_pages_visited=3</code></pre>
+<p>The number is not a wall-clock benchmark. It is a direct view of tree depth.</p>
+<h2 id="insert-leaf">14. Insert into a non-full leaf</h2>
+<p>Assume the root is initially an empty leaf. Inserting key 4 into leaf keys <code>[1 2 3 5]</code> means:</p>
+<ol><li>find the sorted insertion position;</li><li>make room in the slice;</li><li>place the new key and pointer;</li><li>serialize the leaf back to the page.</li></ol>
+<pre><code>pos := 0
+for pos &lt; len(entries) &amp;&amp; entries[pos].Key &lt; key {
+    pos++
+}
+
+entries = append(entries, leafEntry{})
+copy(entries[pos+1:], entries[pos:])
+entries[pos] = leafEntry{Key: key, Ptr: ptr}</code></pre>
+<p>If the resulting key count is at most seven, there is no structural change. The leaf is simply dirty and will later be sealed and checksummed by the pager.</p>
+<h2 id="leaf-split">15. Split a full leaf</h2>
+<p>The eighth key is the first exciting insert. A node is not allowed to remain over capacity, so we temporarily form eight sorted entries and divide them.</p>
+<div class="split"><div><strong>before</strong><br/><code>[1 2 3 4 5 6 7 8]</code></div><div>→ split →</div><div><strong>after</strong><br/><code>[1 2 3 4]</code> + <code>[5 6 7 8]</code></div></div>
+<p>The original page becomes the left leaf. We allocate a new right leaf. Then:</p>
+<ul><li>left leaf gets keys 1–4;</li><li>right leaf gets keys 5–8;</li><li>the old next-leaf pointer moves to the new right leaf;</li><li>the left leaf's next pointer becomes the new right page;</li><li>the smallest key in the new right leaf, 5, is returned upward as the separator.</li></ul>
+<pre><code>mid := len(entries) / 2
+leftEntries  := entries[:mid]
+rightEntries := entries[mid:]
+separator    := rightEntries[0].Key</code></pre>
+<div class="box insight"><strong>This “return a split upward” idea is the heart of insertion.</strong>A child does not directly edit its parent. It says: “I split. The new right sibling is page N. Use key K to distinguish us.” The caller is responsible for inserting that information into the parent.</div>
+<h2 id="internal">16. Internal nodes: separators and children</h2>
+<p>After a leaf splits, something above it must remember both halves. Internal nodes exist only to route searches.</p>
+<p>Represent an internal page in memory with two slices:</p>
+<div class="math">keys     = [5, 9]
+children = [1, 3, 7]</div>
+<p>There is always exactly one more child than key. Key 5 separates child 1 from child 3. Key 9 separates child 3 from child 7.</p>
+<p>If child 3 splits and returns separator 7 with new right page 6, insert both at the corresponding child boundary:</p>
+<div class="math">before:
+keys     = [5, 9]
+children = [1, 3, 7]
+
+child 3 split → separator 7, right page 6
+
+after:
+keys     = [5, 7, 9]
+children = [1, 3, 6, 7]</div>
+<p>This relationship is more important than any individual byte offset. If you understand it, the serialization code is mechanical.</p>
+<h2 id="root-split">17. The first split creates a new root</h2>
+<p>An empty database begins with one leaf page as the root. That page has no parent. So when it splits, there is nobody above it to receive the separator.</p>
+<p>The solution is to allocate a new internal page:</p>
+<div class="tree"><div><span class="node internal">new root: [5]</span></div><div>↙       ↘</div><div><span class="node leaf">[1 2 3 4]</span><span class="node leaf">[5 6 7 8]</span></div></div>
+<p>The new root stores one separator and two children:</p>
+<pre><code>oldRoot := t.root
+newRoot, _ := t.pager.NewPage(PageTypeBTreeInternal)
+
+writeInternal(
+    newRoot,
+    []int64{split.Separator},
+    []uint64{oldRoot, split.RightPage},
+)
+
+t.root = newRoot.Number</code></pre>
+<p>Changing <code>t.root</code> in RAM is not enough. The database metadata page must persist the new root page number so reopening the file starts traversal at the correct page.</p>
+<h2 id="recursive">18. Recursive internal splits</h2>
+<p>Eventually the root may have seven keys too. Then a child split tries to insert an eighth separator into a full internal node. We use a slightly different split rule from leaves.</p>
+<p>For an internal node, one key is <strong>promoted</strong> to the parent rather than remaining in either child.</p>
+<div class="math">temporary keys:
+[5 9 13 17 21 25 29 33]
+
+mid = 4
+promote 21
+
+left keys:  [5 9 13 17]
+right keys: [25 29 33]</div>
+<p>Why does key 21 disappear from the two child key arrays? Because it becomes the separator above them.</p>
+<p>The recursive insertion function therefore returns either:</p>
+<div class="math">nil                 → child did not split
+{separator, right}  → child split; parent must absorb this</div>
+<p>If the root itself returns a split, create another root. That is how tree height increases while every leaf stays at the same depth.</p>
+<h3>Why recursion is a clean fit</h3>
+<p>Lookup travels downward. Insertion travels downward to find the target leaf, then structural consequences travel upward:</p>
+<div class="flow"><div class="flowbox">descend<br/>root → child</div><div class="flowarrow">→</div><div class="flowbox">insert/split<br/>at leaf</div><div class="flowarrow">→</div><div class="flowbox">bubble split<br/>back upward</div></div>
+<p>That mirrors the call stack naturally. Each invocation knows which child it chose, so if that child splits, it knows exactly where to insert the returned separator.</p>
+<h2 id="leaf-chain">19. Leaf chaining gives us ordered scans</h2>
+<p>B+tree leaves carry a sibling pointer. This matters because internal nodes are navigation structures; we do not want to repeatedly descend from the root for every row in a scan.</p>
+<p>To scan in key order:</p>
+<ol><li>follow first-child pointers until reaching the leftmost leaf;</li><li>read all entries in that leaf;</li><li>follow <code>nextLeaf</code>;</li><li>repeat until next page is zero.</li></ol>
+<div class="tree"><span class="node leaf">1 2 3 4</span><span class="arrow">→</span><span class="node leaf">5 6 7 8</span><span class="arrow">→</span><span class="node leaf">9 10 11 12</span></div>
+<p>For each leaf entry, the store follows its record pointer into a data page and decodes the row. Deleted rows are skipped.</p>
+<div class="box question"><strong>Does the B+tree make a full SCAN sublinear?</strong>No. Returning all <code>n</code> rows still requires touching all <code>n</code> logical entries, so the work is still <code>O(n)</code>. The index helps when the predicate narrows what you need—point lookup now touches only a path through the tree plus the target data page.</div>
+<h2 id="store">20. Wire the index into Store</h2>
+<p>The store now owns three pieces of logical metadata:</p>
+<ul><li><code>nextID</code> — the next key to assign;</li><li><code>firstDataPage</code> and <code>lastDataPage</code> — the heap-page chain;</li><li><code>rootPage</code> — where the persistent B+tree begins.</li></ul>
+<h3>INSERT becomes a two-structure operation</h3>
+<p>An insert now has a very important shape:</p>
+<pre><code>id := s.nextID
+record := encodeUser(...)
+ptr := s.appendRecord(record)
+s.tree.Insert(id, ptr)
+s.nextID++
+s.persistMetadata()</code></pre>
+<p>Read that slowly. We write the row into a data page, then add an index entry that points to it. The logical row now spans multiple pages and structures.</p>
+<h3>GET stops doing arithmetic</h3>
+<p>Part 3:</p>
+<pre><code>id → formula → page + offset</code></pre>
+<p>Part 4:</p>
+<pre><code>id → B+tree lookup → RecordPointer → data page → row</code></pre>
+<p>The code becomes conceptually:</p>
+<pre><code>ptr, steps, err := s.tree.Lookup(id)
+u, err := s.readPointer(ptr)</code></pre>
+<p>That extra indirection is the whole point. Logical keys are no longer married to physical positions.</p>
+<h3>DELETE keeps the Part 3 tombstone</h3>
+<p>For now, DELETE finds the row through the tree and marks the record deleted. We deliberately leave the key in the B+tree. Full B+tree deletion requires borrowing/merging/rebalancing nodes and is a substantial topic by itself.</p>
+<h2 id="labs">21. Labs: watch the tree grow</h2>
+<h3>Lab A — create the first split</h3>
+<p>Build the project, remove any previous database, and insert ten users:</p>
+<pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre>
+<pre><code>minidb&gt; INSERT u1 u1@x 21
+minidb&gt; INSERT u2 u2@x 22
+minidb&gt; INSERT u3 u3@x 23
+minidb&gt; INSERT u4 u4@x 24
+minidb&gt; INSERT u5 u5@x 25
+minidb&gt; INSERT u6 u6@x 26
+minidb&gt; INSERT u7 u7@x 27
+minidb&gt; TREE</code></pre>
+<p>At seven keys, the root is still a leaf. Now insert the eighth:</p>
+<pre><code>minidb&gt; INSERT u8 u8@x 28
+minidb&gt; TREE</code></pre>
+<p>You should now see an internal root and two leaf children. Continue through ID 10. A typical result is:</p>
+<pre><code>internal page=4 keys=[5] children=[1 3]
+  leaf page=1 keys=[1 2 3 4] next=3
+  leaf page=3 keys=[5 6 7 8 9 10] next=0</code></pre>
+<p>Look at the physical page numbers. Page 2 is a data page. The two index leaves are pages 1 and 3; the internal root is page 4. This is the mixed-page allocation we wanted.</p>
+<h3>Lab B — trace a lookup</h3>
+<pre><code>minidb&gt; TRACEGET 9
+id=9 name=u9 email=u9@x age=29
+index_pages_visited=2</code></pre>
+<p>Two index pages means root → leaf. The data page fetch happens after the index has produced the record pointer.</p>
+<h3>Lab C — prove the tree is persistent</h3>
+<pre><code>minidb&gt; FLUSH
+minidb&gt; EXIT
+
+./minidb lesson.db
+minidb&gt; TREE
+minidb&gt; TRACEGET 9</code></pre>
+<p>If the same structure appears after restart, you did not build an in-memory search tree that merely happens to accompany a file. You built an on-disk tree whose nodes are database pages.</p>
+<h3>Lab D — force internal splits</h3>
+<p>Because our teaching fanout is only seven, around a hundred sequential inserts are enough to produce three levels. You can generate commands from your shell or paste a smaller batch repeatedly. With 120 rows, the tree should have a root internal page, several internal children, and many leaves.</p>
+<p>Then try:</p>
+<pre><code>minidb&gt; TRACEGET 1
+index_pages_visited=3
+minidb&gt; TRACEGET 64
+index_pages_visited=3
+minidb&gt; TRACEGET 120
+index_pages_visited=3</code></pre>
+<p>The beginning, middle, and end all take the same number of tree levels. That is the practical meaning of <strong>balanced</strong>.</p>
+<h3>Lab E — inspect page types</h3>
+<pre><code>minidb&gt; PAGEINFO 0
+minidb&gt; PAGEINFO 1
+minidb&gt; PAGEINFO 2
+minidb&gt; PAGEINFO 3
+minidb&gt; PAGEINFO 4</code></pre>
+<p>You should see metadata, B+tree leaf, data, B+tree leaf, and B+tree internal pages depending on the exact insertion history. Every one still carries Part 3's generation and checksum.</p>
+<h2 id="complexity">22. What changed asymptotically?</h2>
+<p>Let <code>n</code> be the number of indexed rows and <code>f</code> the average branching factor (fanout) of an internal node.</p>
+<table><thead><tr><th>Operation</th><th>Before a general index</th><th>With B+tree</th></tr></thead><tbody>
+<tr><td>Find one logical key</td><td>Potentially <code>O(n)</code> scan in a general heap</td><td><code>O(log_f n)</code> index pages + one data-page lookup</td></tr>
+<tr><td>Insert</td><td>Append row</td><td>Append row + <code>O(log_f n)</code> tree path; occasional splits</td></tr>
+<tr><td>Return all rows</td><td><code>O(n)</code></td><td>Still <code>O(n)</code></td></tr>
+<tr><td>Persistence</td><td>Rows only</td><td>Rows + persistent index pages + root metadata</td></tr>
+</tbody></table>
+<p>Our fanout of seven is intentionally poor. With a realistic page-packed fanout of perhaps hundreds, the logarithm base is enormous compared with a binary tree. That is why a handful of page reads can navigate very large indexes.</p>
+<h2 id="delete">23. Why DELETE is intentionally incomplete</h2>
+<p>Insertion already required leaf splits, internal splits, separator propagation, and root creation. Deletion has the mirror-image structural problems:</p>
+<ul><li>a leaf can become too empty;</li><li>it may borrow an entry from a sibling;</li><li>or merge with a sibling;</li><li>the parent separator must change;</li><li>an internal node may underflow;</li><li>the root may shrink.</li></ul>
+<p>Part 4 keeps the tombstone from previous parts and leaves the index entry in place. A lookup finds the pointer and then discovers that the row is deleted.</p>
+<div class="box warning"><strong>This wastes index space.</strong>It is acceptable for the teaching milestone because our goal is persistent lookup and splitting. A later storage-management part can reclaim rows and index entries properly.</div>
+<h2 id="reliability">24. The reliability problem Part 4 makes even more obvious</h2>
+<p>Part 3 ended with an unresolved warning: valid checksums do not make multiple page writes atomic. Part 4 makes that issue stronger.</p>
+<p>One INSERT can now dirty:</p>
+<ul><li>a data page containing the new record;</li><li>one or more B+tree pages;</li><li>possibly a brand-new leaf/internal page after a split;</li><li>metadata page 0 if the root changes or allocation metadata changes.</li></ul>
+<p>Every page can have a perfectly valid checksum and yet a crash can leave only some of the related changes durable.</p>
+<div class="box purplebox"><strong>Important boundary</strong>Part 4 improves lookup performance. It does <em>not</em> solve transaction atomicity or crash recovery. In fact, a persistent index is exactly why WAL/journaling becomes unavoidable later: row data and index state must recover to one consistent logical moment.</div>
+<h2 id="exercises">25. Exercises</h2>
+<div class="checkpoint"><h4>Exercise 1 — derive the search path</h4><p>Given internal keys <code>[20, 50, 90]</code> and children <code>[4, 8, 11, 17]</code>, state which child is chosen for keys 5, 20, 49, 50, 89, 90, and 120. Do this without running code.</p></div>
+<div class="checkpoint"><h4>Exercise 2 — inspect the first split</h4><p>Insert exactly seven rows and run <code>TREE</code>. Insert the eighth row and run <code>TREE</code> again. Write down every new page created and explain why its type is needed.</p></div>
+<div class="checkpoint"><h4>Exercise 3 — increase the teaching fanout</h4><p>Change <code>BTreeMaxKeys</code> from 7 to 15, create a fresh database, and determine which insert first causes the root leaf to split. Compare tree depth after 120 inserts.</p></div>
+<div class="checkpoint"><h4>Exercise 4 — calculate real capacity</h4><p>Using the layouts in this chapter, calculate how many 24-byte leaf entries and how many 16-byte internal entries could physically fit from byte 48 through byte 4095. Compare those capacities with our teaching limit of seven.</p></div>
+<div class="checkpoint"><h4>Exercise 5 — persistence test</h4><p>Create enough rows for at least two levels, flush, exit, reopen, and use <code>TRACEGET</code> on keys from the leftmost and rightmost leaves. Explain which persisted metadata tells the process where to begin.</p></div>
+<div class="checkpoint"><h4>Exercise 6 — corruption test</h4><p>After flushing, corrupt one byte in a known B+tree leaf page with <code>dd</code>. Reopen and attempt a lookup that needs that leaf. Confirm that Part 3's checksum validation rejects the page before the B+tree decoder trusts its entries.</p></div>
+<div class="checkpoint"><h4>Exercise 7 — duplicate-key thought experiment</h4><p>Our primary ID index rejects duplicate keys. Suppose you instead indexed <code>age</code>, where many users can be 30. Sketch two possible leaf-entry designs that could support duplicates.</p></div>
+<div class="checkpoint"><h4>Exercise 8 — senior: implement index deletion</h4><p>Remove the tombstone-only shortcut. Delete a key from a leaf and implement borrow/merge rules while preserving minimum occupancy. Add invariant checks that all leaves remain at equal depth.</p></div>
+<h2 id="complete">26. Complete program — only after the pieces make sense</h2>
+<p>The final Part 4 project contains five source files:</p>
+<div class="filetree">minisqlite-part4/
+├── go.mod
+├── format.go   ← reliable page header + four page types
+├── pager.go    ← cache + validated I/O + generic page allocation
+├── btree.go    ← persistent B+tree lookup, insertion, splits, leaf chain
+├── store.go    ← heap rows + metadata + B+tree integration
+└── main.go     ← CLI + TRACEGET + TREE + DATAPAGES</div>
+<div class="final"><h3>Before you copy</h3><p>You should be able to explain these transitions without looking at code: logical ID → tree path → leaf entry → record pointer → data page; full leaf → left/right leaves + separator; child split → parent insertion; root split → new root; leftmost leaf → sibling chain → ordered scan. If one of those feels like magic, return to that section before using the complete files.</p></div>
+<h3><code>format.go</code></h3>
+<pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+)
+
+const (
+	PageSize          = 4096
+	PageHeaderSize    = 32
+	PageMagic         = "PG04"
+	PageHeaderVersion = uint16(1)
+	ChecksumAlgorithm = uint32(1)
+)
+
+type PageType uint8
+
+const (
+	PageTypeMetadata      PageType = 1
+	PageTypeData          PageType = 2
+	PageTypeBTreeLeaf     PageType = 3
+	PageTypeBTreeInternal PageType = 4
+)
+
+func (t PageType) String() string {
+	switch t {
+	case PageTypeMetadata:
+		return "metadata"
+	case PageTypeData:
+		return "data"
+	case PageTypeBTreeLeaf:
+		return "btree-leaf"
+	case PageTypeBTreeInternal:
+		return "btree-internal"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(t))
+	}
+}
+
+func validPageType(t PageType) bool {
+	return t == PageTypeMetadata || t == PageTypeData || t == PageTypeBTreeLeaf || t == PageTypeBTreeInternal
+}
+
+type PageHeaderInfo struct {
+	Type       PageType
+	Number     uint64
+	Generation uint64
+	Checksum   uint32
+}
+
+func initializePageData(data []byte, pageNum uint64, pageType PageType) error {
+	if len(data) != PageSize {
+		return fmt.Errorf("initialize page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	if !validPageType(pageType) {
+		return fmt.Errorf("initialize page: invalid page type %d", pageType)
+	}
+	clear(data)
+	copy(data[0:4], []byte(PageMagic))
+	binary.LittleEndian.PutUint16(data[4:6], PageHeaderVersion)
+	data[6] = byte(pageType)
+	binary.LittleEndian.PutUint64(data[8:16], pageNum)
+	return nil
+}
+
+func computePageChecksum(data []byte) (uint32, error) {
+	if len(data) != PageSize {
+		return 0, fmt.Errorf("checksum: expected %d bytes, got %d", PageSize, len(data))
+	}
+	h := crc32.NewIEEE()
+	_, _ = h.Write(data[:24])
+	_, _ = h.Write([]byte{0, 0, 0, 0})
+	_, _ = h.Write(data[28:])
+	return h.Sum32(), nil
+}
+
+func decodePageHeader(data []byte) PageHeaderInfo {
+	return PageHeaderInfo{
+		Type:       PageType(data[6]),
+		Number:     binary.LittleEndian.Uint64(data[8:16]),
+		Generation: binary.LittleEndian.Uint64(data[16:24]),
+		Checksum:   binary.LittleEndian.Uint32(data[24:28]),
+	}
+}
+
+func sealPageData(data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("seal page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	generation := binary.LittleEndian.Uint64(data[16:24]) + 1
+	binary.LittleEndian.PutUint64(data[16:24], generation)
+	binary.LittleEndian.PutUint32(data[24:28], 0)
+	checksum, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	binary.LittleEndian.PutUint32(data[24:28], checksum)
+	return decodePageHeader(data), nil
+}
+
+func validatePageData(expectedPageNum uint64, data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: expected %d bytes, got %d", expectedPageNum, PageSize, len(data))
+	}
+	if string(data[0:4]) != PageMagic {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: bad page magic %q", expectedPageNum, string(data[0:4]))
+	}
+	if got := binary.LittleEndian.Uint16(data[4:6]); got != PageHeaderVersion {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: unsupported page-header version %d", expectedPageNum, got)
+	}
+	info := decodePageHeader(data)
+	if !validPageType(info.Type) {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: invalid page type %d", expectedPageNum, info.Type)
+	}
+	if info.Number != expectedPageNum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: stored page number is %d", expectedPageNum, info.Number)
+	}
+	if info.Checksum == 0 {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: missing checksum", expectedPageNum)
+	}
+	computed, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if computed != info.Checksum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: checksum mismatch: stored=%08x computed=%08x", expectedPageNum, info.Checksum, computed)
+	}
+	return info, nil
+}
+</code></pre>
+<h3><code>pager.go</code></h3>
+<pre><code>package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
+type Page struct {
+	Number uint64
+	Type   PageType
+	Data   []byte
+	dirty  bool
+}
+
+func (p *Page) MarkDirty() { p.dirty = true }
+
+type PagerStats struct {
+	CachedPages        int
+	TotalPages         uint64
+	CacheHits          uint64
+	DiskReads          uint64
+	DiskWrites         uint64
+	ValidationFailures uint64
+}
+
+type Pager struct {
+	file               *os.File
+	pages              map[uint64]*Page
+	numPages           uint64
+	cacheHits          uint64
+	diskReads          uint64
+	diskWrites         uint64
+	validationFailures uint64
+}
+
+func OpenPager(path string) (*Pager, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if info.Size()%PageSize != 0 {
+		file.Close()
+		return nil, fmt.Errorf("database size %d is not a multiple of page size %d", info.Size(), PageSize)
+	}
+	return &amp;Pager{file: file, pages: make(map[uint64]*Page), numPages: uint64(info.Size() / PageSize)}, nil
+}
+
+func (p *Pager) GetPage(pageNum uint64) (*Page, error) {
+	if page, ok := p.pages[pageNum]; ok {
+		p.cacheHits++
+		return page, nil
+	}
+	if pageNum &gt;= p.numPages {
+		return nil, fmt.Errorf("page %d does not exist", pageNum)
+	}
+	page := &amp;Page{Number: pageNum, Data: make([]byte, PageSize)}
+	n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil &amp;&amp; err != io.EOF {
+		return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+	}
+	p.diskReads++
+	info, err := validatePageData(pageNum, page.Data)
+	if err != nil {
+		p.validationFailures++
+		return nil, err
+	}
+	page.Type = info.Type
+	p.pages[pageNum] = page
+	return page, nil
+}
+
+func (p *Pager) NewPage(pageType PageType) (*Page, error) {
+	pageNum := p.numPages
+	page := &amp;Page{Number: pageNum, Type: pageType, Data: make([]byte, PageSize), dirty: true}
+	if err := initializePageData(page.Data, pageNum, pageType); err != nil {
+		return nil, err
+	}
+	p.pages[pageNum] = page
+	p.numPages++
+	return page, nil
+}
+
+func (p *Pager) FlushPage(pageNum uint64) error {
+	page, ok := p.pages[pageNum]
+	if !ok || !page.dirty {
+		return nil
+	}
+	if _, err := sealPageData(page.Data); err != nil {
+		return err
+	}
+	n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil {
+		return fmt.Errorf("write page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return fmt.Errorf("write page %d: expected %d bytes, wrote %d", pageNum, PageSize, n)
+	}
+	page.dirty = false
+	p.diskWrites++
+	return nil
+}
+
+func (p *Pager) FlushAll() error {
+	for pageNum := range p.pages {
+		if err := p.FlushPage(pageNum); err != nil {
+			return err
+		}
+	}
+	return p.file.Sync()
+}
+
+func (p *Pager) VerifyAll() (uint64, error) {
+	if err := p.FlushAll(); err != nil {
+		return 0, err
+	}
+	buf := make([]byte, PageSize)
+	for pageNum := uint64(0); pageNum &lt; p.numPages; pageNum++ {
+		n, err := p.file.ReadAt(buf, int64(pageNum)*PageSize)
+		if err != nil &amp;&amp; err != io.EOF {
+			return pageNum, fmt.Errorf("verify page %d: %w", pageNum, err)
+		}
+		if n != PageSize {
+			return pageNum, fmt.Errorf("verify page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+		}
+		if _, err := validatePageData(pageNum, buf); err != nil {
+			p.validationFailures++
+			return pageNum, err
+		}
+	}
+	return p.numPages, nil
+}
+
+func (p *Pager) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	page, err := p.GetPage(pageNum)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if page.dirty {
+		if err := p.FlushPage(pageNum); err != nil {
+			return PageHeaderInfo{}, err
+		}
+	}
+	return validatePageData(pageNum, page.Data)
+}
+
+func (p *Pager) Stats() PagerStats {
+	return PagerStats{len(p.pages), p.numPages, p.cacheHits, p.diskReads, p.diskWrites, p.validationFailures}
+}
+
+func (p *Pager) Close() error {
+	flushErr := p.FlushAll()
+	closeErr := p.file.Close()
+	if flushErr != nil {
+		return flushErr
+	}
+	return closeErr
+}
+</code></pre>
+<h3><code>btree.go</code></h3>
+<pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+// BTreeMaxKeys is intentionally tiny so a learner can trigger splits with a
+// handful of INSERTs. A production page would use far more of its 4096 bytes.
+const BTreeMaxKeys = 7
+
+const (
+	nodeKeyCountOffset = PageHeaderSize
+	nodeSpecialOffset  = 40 // leaf: next leaf; internal: first child
+	nodeEntriesOffset  = 48
+	leafEntrySize      = 24
+	internalEntrySize  = 16
+)
+
+type RecordPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type leafEntry struct {
+	Key int64
+	Ptr RecordPointer
+}
+
+type internalEntry struct {
+	Key        int64
+	RightChild uint64
+}
+
+type splitResult struct {
+	Separator int64
+	RightPage uint64
+}
+
+type BTree struct {
+	pager *Pager
+	root  uint64
+}
+
+func newBTree(pager *Pager, root uint64) *BTree { return &amp;BTree{pager: pager, root: root} }
+func (t *BTree) RootPage() uint64               { return t.root }
+
+func keyCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[nodeKeyCountOffset : nodeKeyCountOffset+2]))
+}
+
+func setKeyCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[nodeKeyCountOffset:nodeKeyCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func leafNext(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setLeafNext(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+func internalFirstChild(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setInternalFirstChild(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+
+func readLeafEntries(page *Page) []leafEntry {
+	n := keyCount(page)
+	out := make([]leafEntry, 0, n)
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*leafEntrySize
+		out = append(out, leafEntry{
+			Key: int64(binary.LittleEndian.Uint64(page.Data[off : off+8])),
+			Ptr: RecordPointer{Page: binary.LittleEndian.Uint64(page.Data[off+8 : off+16]), Slot: binary.LittleEndian.Uint16(page.Data[off+16 : off+18])},
+		})
+	}
+	return out
+}
+
+func writeLeafEntries(page *Page, entries []leafEntry) error {
+	if len(entries) &gt; BTreeMaxKeys {
+		return fmt.Errorf("leaf page %d overflow: %d keys", page.Number, len(entries))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	for i, e := range entries {
+		off := nodeEntriesOffset + i*leafEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(e.Key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], e.Ptr.Page)
+		binary.LittleEndian.PutUint16(page.Data[off+16:off+18], e.Ptr.Slot)
+	}
+	setKeyCount(page, len(entries))
+	page.MarkDirty()
+	return nil
+}
+
+func readInternal(page *Page) ([]int64, []uint64) {
+	n := keyCount(page)
+	keys := make([]int64, 0, n)
+	children := make([]uint64, 0, n+1)
+	children = append(children, internalFirstChild(page))
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*internalEntrySize
+		keys = append(keys, int64(binary.LittleEndian.Uint64(page.Data[off:off+8])))
+		children = append(children, binary.LittleEndian.Uint64(page.Data[off+8:off+16]))
+	}
+	return keys, children
+}
+
+func writeInternal(page *Page, keys []int64, children []uint64) error {
+	if len(keys) &gt; BTreeMaxKeys {
+		return fmt.Errorf("internal page %d overflow: %d keys", page.Number, len(keys))
+	}
+	if len(children) != len(keys)+1 {
+		return fmt.Errorf("internal page %d: %d keys need %d children, got %d", page.Number, len(keys), len(keys)+1, len(children))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	setInternalFirstChild(page, children[0])
+	for i, key := range keys {
+		off := nodeEntriesOffset + i*internalEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], children[i+1])
+	}
+	setKeyCount(page, len(keys))
+	page.MarkDirty()
+	return nil
+}
+
+func (t *BTree) Lookup(key int64) (RecordPointer, int, error) {
+	pageNum := t.root
+	visits := 0
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return RecordPointer{}, visits, err
+		}
+		visits++
+		switch page.Type {
+		case PageTypeBTreeLeaf:
+			entries := readLeafEntries(page)
+			lo, hi := 0, len(entries)
+			for lo &lt; hi {
+				mid := lo + (hi-lo)/2
+				if entries[mid].Key &lt; key {
+					lo = mid + 1
+				} else {
+					hi = mid
+				}
+			}
+			if lo &lt; len(entries) &amp;&amp; entries[lo].Key == key {
+				return entries[lo].Ptr, visits, nil
+			}
+			return RecordPointer{}, visits, ErrNotFound
+		case PageTypeBTreeInternal:
+			keys, children := readInternal(page)
+			childIndex := 0
+			for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+				childIndex++
+			}
+			pageNum = children[childIndex]
+		default:
+			return RecordPointer{}, visits, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+	}
+}
+
+func (t *BTree) Insert(key int64, ptr RecordPointer) error {
+	if _, _, err := t.Lookup(key); err == nil {
+		return fmt.Errorf("duplicate index key %d", key)
+	} else if err != ErrNotFound {
+		return err
+	}
+	split, err := t.insertRecursive(t.root, key, ptr)
+	if err != nil {
+		return err
+	}
+	if split == nil {
+		return nil
+	}
+	oldRoot := t.root
+	newRoot, err := t.pager.NewPage(PageTypeBTreeInternal)
+	if err != nil {
+		return err
+	}
+	if err := writeInternal(newRoot, []int64{split.Separator}, []uint64{oldRoot, split.RightPage}); err != nil {
+		return err
+	}
+	t.root = newRoot.Number
+	return nil
+}
+
+func (t *BTree) insertRecursive(pageNum uint64, key int64, ptr RecordPointer) (*splitResult, error) {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return nil, err
+	}
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		return t.insertLeaf(page, key, ptr)
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		childIndex := 0
+		for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+			childIndex++
+		}
+		childSplit, err := t.insertRecursive(children[childIndex], key, ptr)
+		if err != nil || childSplit == nil {
+			return childSplit, err
+		}
+
+		keys = append(keys, 0)
+		copy(keys[childIndex+1:], keys[childIndex:])
+		keys[childIndex] = childSplit.Separator
+		children = append(children, 0)
+		copy(children[childIndex+2:], children[childIndex+1:])
+		children[childIndex+1] = childSplit.RightPage
+
+		if len(keys) &lt;= BTreeMaxKeys {
+			return nil, writeInternal(page, keys, children)
+		}
+
+		mid := len(keys) / 2
+		promoted := keys[mid]
+		leftKeys := append([]int64(nil), keys[:mid]...)
+		leftChildren := append([]uint64(nil), children[:mid+1]...)
+		rightKeys := append([]int64(nil), keys[mid+1:]...)
+		rightChildren := append([]uint64(nil), children[mid+1:]...)
+
+		if err := writeInternal(page, leftKeys, leftChildren); err != nil {
+			return nil, err
+		}
+		right, err := t.pager.NewPage(PageTypeBTreeInternal)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeInternal(right, rightKeys, rightChildren); err != nil {
+			return nil, err
+		}
+		return &amp;splitResult{Separator: promoted, RightPage: right.Number}, nil
+	default:
+		return nil, fmt.Errorf("btree insert: page %d has type %s", page.Number, page.Type)
+	}
+}
+
+func (t *BTree) insertLeaf(page *Page, key int64, ptr RecordPointer) (*splitResult, error) {
+	entries := readLeafEntries(page)
+	pos := 0
+	for pos &lt; len(entries) &amp;&amp; entries[pos].Key &lt; key {
+		pos++
+	}
+	if pos &lt; len(entries) &amp;&amp; entries[pos].Key == key {
+		return nil, fmt.Errorf("duplicate index key %d", key)
+	}
+	entries = append(entries, leafEntry{})
+	copy(entries[pos+1:], entries[pos:])
+	entries[pos] = leafEntry{Key: key, Ptr: ptr}
+	if len(entries) &lt;= BTreeMaxKeys {
+		return nil, writeLeafEntries(page, entries)
+	}
+
+	mid := len(entries) / 2
+	leftEntries := append([]leafEntry(nil), entries[:mid]...)
+	rightEntries := append([]leafEntry(nil), entries[mid:]...)
+	oldNext := leafNext(page)
+	right, err := t.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(page, leftEntries); err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(right, rightEntries); err != nil {
+		return nil, err
+	}
+	setLeafNext(right, oldNext)
+	setLeafNext(page, right.Number)
+	return &amp;splitResult{Separator: rightEntries[0].Key, RightPage: right.Number}, nil
+}
+
+func (t *BTree) leftmostLeaf() (uint64, error) {
+	pageNum := t.root
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return 0, err
+		}
+		if page.Type == PageTypeBTreeLeaf {
+			return pageNum, nil
+		}
+		if page.Type != PageTypeBTreeInternal {
+			return 0, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+		pageNum = internalFirstChild(page)
+	}
+}
+
+func (t *BTree) AllPointers() ([]RecordPointer, error) {
+	pageNum, err := t.leftmostLeaf()
+	if err != nil {
+		return nil, err
+	}
+	var out []RecordPointer
+	for pageNum != 0 {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeBTreeLeaf {
+			return nil, fmt.Errorf("btree scan: page %d is %s", pageNum, page.Type)
+		}
+		for _, e := range readLeafEntries(page) {
+			out = append(out, e.Ptr)
+		}
+		pageNum = leafNext(page)
+	}
+	return out, nil
+}
+
+func (t *BTree) Dump() (string, error) {
+	var b strings.Builder
+	if err := t.dumpPage(&amp;b, t.root, 0); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+func (t *BTree) dumpPage(b *strings.Builder, pageNum uint64, depth int) error {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return err
+	}
+	indent := strings.Repeat("  ", depth)
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		entries := readLeafEntries(page)
+		fmt.Fprintf(b, "%sleaf page=%d keys=[", indent, pageNum)
+		for i, e := range entries {
+			if i &gt; 0 {
+				b.WriteString(" ")
+			}
+			fmt.Fprintf(b, "%d", e.Key)
+		}
+		fmt.Fprintf(b, "] next=%d\n", leafNext(page))
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		fmt.Fprintf(b, "%sinternal page=%d keys=%v children=%v\n", indent, pageNum, keys, children)
+		for _, child := range children {
+			if err := t.dumpPage(b, child, depth+1); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("tree dump: page %d has type %s", pageNum, page.Type)
+	}
+	return nil
+}
+</code></pre>
+<h3><code>store.go</code></h3>
+<pre><code>package main
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+const (
+	DatabaseMagic   = "MINIDB04"
+	DatabaseVersion = uint32(4)
+	HeaderPage      = uint64(0)
+
+	RecordSize  = 256
+	MaxNameLen  = 32
+	MaxEmailLen = 64
+
+	dataSlotCountOffset = PageHeaderSize
+	dataNextPageOffset  = 40
+	dataRecordsOffset   = 64
+	DataSlotsPerPage    = (PageSize - dataRecordsOffset) / RecordSize
+
+	metaMagicOffset          = PageHeaderSize
+	metaVersionOffset        = metaMagicOffset + 8
+	metaPageSizeOffset       = metaVersionOffset + 4
+	metaRecordSizeOffset     = metaPageSizeOffset + 4
+	metaPageHeaderSizeOffset = metaRecordSizeOffset + 4
+	metaChecksumAlgOffset    = metaPageHeaderSizeOffset + 4
+	metaNextIDOffset         = 64
+	metaRootPageOffset       = 72
+	metaFirstDataPageOffset  = 80
+	metaLastDataPageOffset   = 88
+)
+
+var (
+	ErrNotFound = errors.New("record not found")
+	ErrDeleted  = errors.New("record deleted")
+)
+
+type User struct {
+	ID      int64
+	Deleted bool
+	Name    string
+	Email   string
+	Age     int32
+}
+
+type Store struct {
+	pager         *Pager
+	tree          *BTree
+	nextID        int64
+	firstDataPage uint64
+	lastDataPage  uint64
+}
+
+func writeDatabaseMetadata(page *Page, nextID int64, rootPage, firstData, lastData uint64) {
+	clear(page.Data[PageHeaderSize:])
+	copy(page.Data[metaMagicOffset:metaMagicOffset+8], []byte(DatabaseMagic))
+	binary.LittleEndian.PutUint32(page.Data[metaVersionOffset:metaVersionOffset+4], DatabaseVersion)
+	binary.LittleEndian.PutUint32(page.Data[metaPageSizeOffset:metaPageSizeOffset+4], PageSize)
+	binary.LittleEndian.PutUint32(page.Data[metaRecordSizeOffset:metaRecordSizeOffset+4], RecordSize)
+	binary.LittleEndian.PutUint32(page.Data[metaPageHeaderSizeOffset:metaPageHeaderSizeOffset+4], PageHeaderSize)
+	binary.LittleEndian.PutUint32(page.Data[metaChecksumAlgOffset:metaChecksumAlgOffset+4], ChecksumAlgorithm)
+	binary.LittleEndian.PutUint64(page.Data[metaNextIDOffset:metaNextIDOffset+8], uint64(nextID))
+	binary.LittleEndian.PutUint64(page.Data[metaRootPageOffset:metaRootPageOffset+8], rootPage)
+	binary.LittleEndian.PutUint64(page.Data[metaFirstDataPageOffset:metaFirstDataPageOffset+8], firstData)
+	binary.LittleEndian.PutUint64(page.Data[metaLastDataPageOffset:metaLastDataPageOffset+8], lastData)
+	page.MarkDirty()
+}
+
+func readDatabaseMetadata(page *Page) (nextID int64, rootPage, firstData, lastData uint64, err error) {
+	if page.Type != PageTypeMetadata {
+		err = fmt.Errorf("page 0 is %s, expected metadata", page.Type)
+		return
+	}
+	if string(page.Data[metaMagicOffset:metaMagicOffset+8]) != DatabaseMagic {
+		err = fmt.Errorf("not a Part 4 MiniDB file: bad database magic")
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaVersionOffset : metaVersionOffset+4]); got != DatabaseVersion {
+		err = fmt.Errorf("unsupported database version %d", got)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageSizeOffset : metaPageSizeOffset+4]); got != PageSize {
+		err = fmt.Errorf("file page size is %d, program expects %d", got, PageSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaRecordSizeOffset : metaRecordSizeOffset+4]); got != RecordSize {
+		err = fmt.Errorf("file record size is %d, program expects %d", got, RecordSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageHeaderSizeOffset : metaPageHeaderSizeOffset+4]); got != PageHeaderSize {
+		err = fmt.Errorf("file page-header size is %d, program expects %d", got, PageHeaderSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaChecksumAlgOffset : metaChecksumAlgOffset+4]); got != ChecksumAlgorithm {
+		err = fmt.Errorf("unsupported checksum algorithm %d", got)
+		return
+	}
+	nextID = int64(binary.LittleEndian.Uint64(page.Data[metaNextIDOffset : metaNextIDOffset+8]))
+	rootPage = binary.LittleEndian.Uint64(page.Data[metaRootPageOffset : metaRootPageOffset+8])
+	firstData = binary.LittleEndian.Uint64(page.Data[metaFirstDataPageOffset : metaFirstDataPageOffset+8])
+	lastData = binary.LittleEndian.Uint64(page.Data[metaLastDataPageOffset : metaLastDataPageOffset+8])
+	if nextID &lt; 1 {
+		err = fmt.Errorf("invalid next id %d", nextID)
+		return
+	}
+	if rootPage == 0 {
+		err = fmt.Errorf("invalid root page 0")
+		return
+	}
+	if (firstData == 0) != (lastData == 0) {
+		err = fmt.Errorf("data-page metadata disagrees: first=%d last=%d", firstData, lastData)
+		return
+	}
+	return
+}
+
+func Open(path string) (*Store, error) {
+	pager, err := OpenPager(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if pager.numPages == 0 {
+		header, err := pager.NewPage(PageTypeMetadata)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		root, err := pager.NewPage(PageTypeBTreeLeaf)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		setKeyCount(root, 0)
+		setLeafNext(root, 0)
+		writeDatabaseMetadata(header, 1, root.Number, 0, 0)
+		if err := pager.FlushAll(); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		return &amp;Store{pager: pager, tree: newBTree(pager, root.Number), nextID: 1}, nil
+	}
+
+	header, err := pager.GetPage(HeaderPage)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	nextID, rootPage, firstData, lastData, err := readDatabaseMetadata(header)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	root, err := pager.GetPage(rootPage)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	if root.Type != PageTypeBTreeLeaf &amp;&amp; root.Type != PageTypeBTreeInternal {
+		pager.Close()
+		return nil, fmt.Errorf("root page %d has type %s", rootPage, root.Type)
+	}
+	return &amp;Store{pager: pager, tree: newBTree(pager, rootPage), nextID: nextID, firstDataPage: firstData, lastDataPage: lastData}, nil
+}
+
+func (s *Store) Close() error { return s.pager.Close() }
+func (s *Store) Flush() error {
+	if err := s.persistMetadata(); err != nil {
+		return err
+	}
+	return s.pager.FlushAll()
+}
+func (s *Store) Stats() PagerStats { return s.pager.Stats() }
+
+func (s *Store) persistMetadata() error {
+	header, err := s.pager.GetPage(HeaderPage)
+	if err != nil {
+		return err
+	}
+	writeDatabaseMetadata(header, s.nextID, s.tree.RootPage(), s.firstDataPage, s.lastDataPage)
+	return nil
+}
+
+func dataSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[dataSlotCountOffset : dataSlotCountOffset+2]))
+}
+func setDataSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[dataSlotCountOffset:dataSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+func setDataNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[dataNextPageOffset:dataNextPageOffset+8], n)
+	page.MarkDirty()
+}
+func dataNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataNextPageOffset : dataNextPageOffset+8])
+}
+
+func encodeUser(u User) ([]byte, error) {
+	if len([]byte(u.Name)) &gt; MaxNameLen {
+		return nil, fmt.Errorf("name is longer than %d bytes", MaxNameLen)
+	}
+	if len([]byte(u.Email)) &gt; MaxEmailLen {
+		return nil, fmt.Errorf("email is longer than %d bytes", MaxEmailLen)
+	}
+	record := make([]byte, RecordSize)
+	binary.LittleEndian.PutUint64(record[0:8], uint64(u.ID))
+	if u.Deleted {
+		record[8] = 1
+	}
+	copy(record[9:41], []byte(u.Name))
+	copy(record[41:105], []byte(u.Email))
+	binary.LittleEndian.PutUint32(record[105:109], uint32(u.Age))
+	return record, nil
+}
+
+func decodeUser(record []byte) (User, error) {
+	if len(record) != RecordSize {
+		return User{}, fmt.Errorf("expected %d bytes, got %d", RecordSize, len(record))
+	}
+	return User{ID: int64(binary.LittleEndian.Uint64(record[0:8])), Deleted: record[8] == 1, Name: strings.TrimRight(string(record[9:41]), "\x00"), Email: strings.TrimRight(string(record[41:105]), "\x00"), Age: int32(binary.LittleEndian.Uint32(record[105:109]))}, nil
+}
+
+func (s *Store) appendRecord(record []byte) (RecordPointer, error) {
+	var page *Page
+	var err error
+	if s.lastDataPage == 0 {
+		page, err = s.pager.NewPage(PageTypeData)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+		setDataSlotCount(page, 0)
+		setDataNextPage(page, 0)
+		s.firstDataPage, s.lastDataPage = page.Number, page.Number
+	} else {
+		page, err = s.pager.GetPage(s.lastDataPage)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+		if page.Type != PageTypeData {
+			return RecordPointer{}, fmt.Errorf("last data page %d is %s", page.Number, page.Type)
+		}
+	}
+	if dataSlotCount(page) &gt;= DataSlotsPerPage {
+		next, err := s.pager.NewPage(PageTypeData)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+		setDataSlotCount(next, 0)
+		setDataNextPage(next, 0)
+		setDataNextPage(page, next.Number)
+		s.lastDataPage = next.Number
+		page = next
+	}
+	slot := dataSlotCount(page)
+	off := dataRecordsOffset + slot*RecordSize
+	copy(page.Data[off:off+RecordSize], record)
+	setDataSlotCount(page, slot+1)
+	page.MarkDirty()
+	return RecordPointer{Page: page.Number, Slot: uint16(slot)}, nil
+}
+
+func (s *Store) readPointer(ptr RecordPointer) (User, error) {
+	page, err := s.pager.GetPage(ptr.Page)
+	if err != nil {
+		return User{}, err
+	}
+	if page.Type != PageTypeData {
+		return User{}, fmt.Errorf("record pointer targets page %d of type %s", ptr.Page, page.Type)
+	}
+	if int(ptr.Slot) &gt;= dataSlotCount(page) {
+		return User{}, fmt.Errorf("record pointer slot %d outside page %d count %d", ptr.Slot, ptr.Page, dataSlotCount(page))
+	}
+	off := dataRecordsOffset + int(ptr.Slot)*RecordSize
+	return decodeUser(page.Data[off : off+RecordSize])
+}
+
+func (s *Store) Insert(name, email string, age int32) (int64, error) {
+	id := s.nextID
+	record, err := encodeUser(User{ID: id, Name: name, Email: email, Age: age})
+	if err != nil {
+		return 0, err
+	}
+	ptr, err := s.appendRecord(record)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.tree.Insert(id, ptr); err != nil {
+		return 0, err
+	}
+	s.nextID++
+	if err := s.persistMetadata(); err != nil {
+		s.nextID--
+		return 0, err
+	}
+	return id, nil
+}
+
+func (s *Store) Get(id int64) (User, error) { u, _, err := s.GetWithSteps(id); return u, err }
+
+func (s *Store) GetWithSteps(id int64) (User, int, error) {
+	if id &lt; 1 || id &gt;= s.nextID {
+		return User{}, 0, ErrNotFound
+	}
+	ptr, steps, err := s.tree.Lookup(id)
+	if err != nil {
+		return User{}, steps, err
+	}
+	u, err := s.readPointer(ptr)
+	if err != nil {
+		return User{}, steps, err
+	}
+	if u.Deleted {
+		return User{}, steps, ErrDeleted
+	}
+	if u.ID != id {
+		return User{}, steps, fmt.Errorf("index key %d points to record id %d", id, u.ID)
+	}
+	return u, steps, nil
+}
+
+func (s *Store) Scan() ([]User, error) {
+	ptrs, err := s.tree.AllPointers()
+	if err != nil {
+		return nil, err
+	}
+	users := make([]User, 0, len(ptrs))
+	for _, ptr := range ptrs {
+		u, err := s.readPointer(ptr)
+		if err != nil {
+			return nil, err
+		}
+		if u.Deleted {
+			continue
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (s *Store) Delete(id int64) error {
+	ptr, _, err := s.tree.Lookup(id)
+	if err != nil {
+		return err
+	}
+	page, err := s.pager.GetPage(ptr.Page)
+	if err != nil {
+		return err
+	}
+	if page.Type != PageTypeData {
+		return fmt.Errorf("record pointer targets page %d of type %s", ptr.Page, page.Type)
+	}
+	if int(ptr.Slot) &gt;= dataSlotCount(page) {
+		return fmt.Errorf("record pointer slot %d outside page %d", ptr.Slot, ptr.Page)
+	}
+	off := dataRecordsOffset + int(ptr.Slot)*RecordSize
+	if page.Data[off+8] == 1 {
+		return ErrDeleted
+	}
+	page.Data[off+8] = 1
+	page.MarkDirty()
+	return nil
+}
+
+func (s *Store) TreeDump() (string, error) { return s.tree.Dump() }
+
+func (s *Store) Verify() (uint64, error) {
+	if err := s.persistMetadata(); err != nil {
+		return 0, err
+	}
+	return s.pager.VerifyAll()
+}
+
+func (s *Store) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	if pageNum &gt;= s.pager.numPages {
+		return PageHeaderInfo{}, fmt.Errorf("page %d does not exist", pageNum)
+	}
+	return s.pager.PageInfo(pageNum)
+}
+
+func (s *Store) DataChain() ([]uint64, error) {
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := s.firstDataPage; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("data-page cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeData {
+			return nil, fmt.Errorf("data chain page %d is %s", p, page.Type)
+		}
+		out = append(out, p)
+		p = dataNextPage(page)
+	}
+	return out, nil
+}
+</code></pre>
+<h3><code>main.go</code></h3>
+<pre><code>package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+func printUser(u User) { fmt.Printf("id=%d name=%s email=%s age=%d\n", u.ID, u.Name, u.Email, u.Age) }
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("usage: minidb &lt;database-file&gt;")
+		os.Exit(1)
+	}
+	store, err := Open(os.Args[1])
+	if err != nil {
+		fmt.Println("open error:", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minidb&gt; ")
+		if !scanner.Scan() {
+			fmt.Println()
+			break
+		}
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+		switch strings.ToUpper(parts[0]) {
+		case "INSERT":
+			if len(parts) != 4 {
+				fmt.Println("usage: INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+				continue
+			}
+			age64, err := strconv.ParseInt(parts[3], 10, 32)
+			if err != nil {
+				fmt.Println("age must be a 32-bit integer")
+				continue
+			}
+			id, err := store.Insert(parts[1], parts[2], int32(age64))
+			if err != nil {
+				fmt.Println("insert error:", err)
+				continue
+			}
+			fmt.Printf("inserted id=%d\n", id)
+		case "GET":
+			if len(parts) != 2 {
+				fmt.Println("usage: GET &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			u, err := store.Get(id)
+			if err != nil {
+				fmt.Println("get error:", err)
+				continue
+			}
+			printUser(u)
+		case "TRACEGET":
+			if len(parts) != 2 {
+				fmt.Println("usage: TRACEGET &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			u, steps, err := store.GetWithSteps(id)
+			if err != nil {
+				fmt.Printf("get error after %d index pages: %v\n", steps, err)
+				continue
+			}
+			printUser(u)
+			fmt.Printf("index_pages_visited=%d\n", steps)
+		case "SCAN":
+			users, err := store.Scan()
+			if err != nil {
+				fmt.Println("scan error:", err)
+				continue
+			}
+			for _, u := range users {
+				printUser(u)
+			}
+		case "DELETE":
+			if len(parts) != 2 {
+				fmt.Println("usage: DELETE &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			if err := store.Delete(id); err != nil {
+				fmt.Println("delete error:", err)
+				continue
+			}
+			fmt.Printf("record %d deleted\n", id)
+		case "TREE":
+			dump, err := store.TreeDump()
+			if err != nil {
+				fmt.Println("tree error:", err)
+				continue
+			}
+			fmt.Print(dump)
+		case "DATAPAGES":
+			pages, err := store.DataChain()
+			if err != nil {
+				fmt.Println("data pages error:", err)
+				continue
+			}
+			fmt.Println("data_pages=", pages)
+		case "STATS":
+			st := store.Stats()
+			fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d validation_failures=%d\n", st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites, st.ValidationFailures)
+		case "FLUSH":
+			if err := store.Flush(); err != nil {
+				fmt.Println("flush error:", err)
+				continue
+			}
+			fmt.Println("dirty pages sealed, checksummed, and flushed")
+		case "VERIFY":
+			pages, err := store.Verify()
+			if err != nil {
+				fmt.Println("verify error:", err)
+				continue
+			}
+			fmt.Printf("verified %d pages\n", pages)
+		case "PAGEINFO":
+			if len(parts) != 2 {
+				fmt.Println("usage: PAGEINFO &lt;page-number&gt;")
+				continue
+			}
+			pageNum, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("page number must be a non-negative integer")
+				continue
+			}
+			info, err := store.PageInfo(pageNum)
+			if err != nil {
+				fmt.Println("pageinfo error:", err)
+				continue
+			}
+			fmt.Printf("page=%d type=%s generation=%d checksum=%08x\n", info.Number, info.Type, info.Generation, info.Checksum)
+		case "HELP":
+			fmt.Println("INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+			fmt.Println("GET &lt;id&gt;")
+			fmt.Println("TRACEGET &lt;id&gt;")
+			fmt.Println("SCAN")
+			fmt.Println("DELETE &lt;id&gt;")
+			fmt.Println("TREE")
+			fmt.Println("DATAPAGES")
+			fmt.Println("STATS")
+			fmt.Println("FLUSH")
+			fmt.Println("VERIFY")
+			fmt.Println("PAGEINFO &lt;page-number&gt;")
+			fmt.Println("EXIT")
+		case "EXIT", "QUIT":
+			return
+		default:
+			fmt.Println("unknown command; try HELP")
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("input error:", err)
+	}
+}
+</code></pre>
+<h3>Build and smoke-test the finished project</h3>
+<pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre>
+<p>Insert ten users, then run:</p>
+<pre><code>minidb&gt; TREE
+internal page=4 keys=[5] children=[1 3]
+  leaf page=1 keys=[1 2 3 4] next=3
+  leaf page=3 keys=[5 6 7 8 9 10] next=0
+
+minidb&gt; TRACEGET 9
+id=9 name=u9 email=u9@x age=29
+index_pages_visited=2
+
+minidb&gt; DATAPAGES
+data_pages= [2]
+
+minidb&gt; FLUSH
+dirty pages sealed, checksummed, and flushed
+
+minidb&gt; VERIFY
+verified 5 pages</code></pre>
+<p>Exit and reopen <code>lesson.db</code>. The same <code>TREE</code> output and successful <code>TRACEGET</code> prove that the index is persistent rather than reconstructed from an in-memory map.</p>
+<h2 id="understand">27. What you should understand before leaving Part 4</h2>
+<p>Imagine an existing database opens. Page 0 passes the Part 3 structural and checksum checks. Its metadata says the B+tree root is page 15. The store creates a BTree object whose root field is 15; it does not rebuild an index by scanning rows.</p>
+<p>Now the user asks for ID 64. The tree asks the pager for page 15. Suppose it is an internal page with separator keys that direct 64 to child page 30. Page 30 is another internal node, which directs 64 to leaf page 25. The leaf entries are sorted. A binary search finds key 64 and returns a physical pointer such as page 24, slot 3.</p>
+<p>Only then does the store ask for that data page. It validates the page type, calculates the slot's byte range inside the data payload, decodes the 256-byte user record, confirms that its stored ID is 64, checks the tombstone flag, and returns the user.</p>
+<p>The key insight is that none of those physical page numbers can be derived from 64. They are discovered through persistent structure. Index pages and data pages can be interleaved because the tree provides the indirection.</p>
+<p>Now imagine inserting one more key into a full leaf. The leaf temporarily has eight entries, splits into two valid leaves, links the siblings, and returns the new right leaf's smallest key upward. The parent inserts that separator and child pointer. If the parent also overflows, it splits and promotes a separator further upward. If that process reaches the root, a new root page is allocated. That is how the tree grows in height without becoming unbalanced.</p>
+<p>You should also understand why <code>SCAN</code> still takes linear work. The B+tree is not a magical compression of results; if the caller requests every row, every row still has to be visited. What the B+tree changes is the amount of work required to narrow down to a small key range or one exact key.</p>
+<p>Finally, Part 3's reliability lesson still applies. A checksum tells us whether one page image is internally intact. It does not guarantee that the data page containing a newly inserted row, the leaf that points to it, an internal page created by a split, and metadata page 0 all became durable together. Persistent indexing makes recovery protocols more important, not less.</p>
+<div class="box insight"><strong>If this story feels mechanical rather than magical, Part 4 worked.</strong>You can now explain not just that databases “use B-trees,” but how a page-sized node routes a lookup, how leaves map keys to record locations, how splits propagate, why the tree stays shallow, and how the whole structure survives a restart.</div>
+<h3>The pain that should now bother you</h3>
+<p>An INSERT can modify several logically related pages. If the process crashes after some of them reach disk and others do not, checksums may say every surviving page is valid while the database as a whole is inconsistent. That is the pressure that will eventually force us to add journaling or a write-ahead log.</p>
+<div style="margin-top:52px;padding:28px;background:#f8fafc;border:1px solid var(--line);border-radius:14px;text-align:center"><strong style="font-size:1.15rem">Part 4 complete</strong><p style="margin-bottom:0;color:var(--muted)">You started with logical IDs tied to physical slots. You ended with heap rows, record pointers, persistent B+tree leaf/internal pages, recursive splits, a root stored in metadata, ordered leaf chaining, and observable logarithmic lookup depth.</p></div>
+</article><nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 4 of 10</span></div><div class="series-links"><a href="part-03.html">← Part 3</a><a href="index.html">Series home</a><a href="part-05.html">Part 5 →</a></div></nav></body></html>

@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MiniSQLite Part 1 — Build a Database From Bytes, Step by Step</title>
+<style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em} h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em} h3{font-size:1.28rem;margin:36px 0 12px} h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:780px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.bytes{display:flex;width:100%;border:1px solid #aeb8c6;border-radius:10px;overflow:hidden;margin:18px 0 8px}.seg{padding:16px 8px;text-align:center;font-size:.85rem;border-right:1px solid #fff;min-width:70px}.seg:last-child{border-right:0}.id{background:#ffd6d6}.del{background:#ffe6a8}.name{background:#cde1ff;flex:1.1}.email{background:#c9f1e3;flex:2}.age{background:#dfd4ff}.pad{background:#e9edf2;flex:2.5}.caption{font-size:.88rem;color:var(--muted);text-align:center;margin-bottom:22px}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.callout-title{font-weight:800}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}
+.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}h1{font-size:2.15rem}.bytes{overflow:auto}.seg{min-width:86px}}
+</style>
+<link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-01.html" rel="canonical"/><meta content="Start from an empty Go project and build persistent fixed-size records from raw bytes." name="description"/></head>
+<body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 1 of 10</span></div><div class="series-links"><a href="index.html">Series home</a><a href="part-02.html">Part 2 →</a></div></nav>
+<article>
+<div class="kicker">MiniSQLite · Part 1 · First-principles database engineering</div>
+<h1>A Database Is a File With Rules</h1>
+<p class="subtitle">We are not going to paste a finished database and explain it afterward. We are going to discover why each piece exists, type one small piece at a time, inspect the bytes, make mistakes on purpose, and only then assemble the complete program.</p>
+<div class="box teacher"><strong>How to use this chapter</strong>Start from the project-setup section below, even if you already know Go. Keep a terminal and editor side by side. We will create the folder, module, and first runnable <code>main.go</code> together. After that, each <span class="step">TYPE</span> step changes only one small idea, and each major checkpoint tells you what to run and what you should expect. Do not copy the final program yet.</div>
+<div class="toc"><strong>Roadmap</strong><ol>
+<li><a href="#setup">Project setup: start from an empty folder</a></li>
+<li><a href="#goal">What are we actually building?</a></li>
+<li><a href="#persistence">RAM, disk, and persistence</a></li>
+<li><a href="#file">A file is only bytes</a></li>
+<li><a href="#format">Inventing an on-disk format</a></li>
+<li><a href="#offset">The offset equation</a></li>
+<li><a href="#header">Why a database needs a header</a></li>
+<li><a href="#encode">Encoding one record</a></li>
+<li><a href="#insert">Building INSERT</a></li>
+<li><a href="#get">Building GET</a></li>
+<li><a href="#scan">Building SCAN</a></li>
+<li><a href="#delete">Building DELETE</a></li>
+<li><a href="#cli">Adding the tiny database shell</a></li>
+<li><a href="#inspect">Inspecting the real bytes</a></li>
+<li><a href="#limits">What this design gets wrong</a></li>
+<li><a href="#full">Complete code — only now</a></li>
+</ol></div>
+<h2 id="setup">1. Project setup: start from an empty folder</h2>
+<p>Before we talk about database internals, we need a project that you can actually run. This part may look basic, but it matters for the teaching style of the rest of the chapter. We are not going to pretend that <code>main.go</code>, <code>go.mod</code>, imports, and a working command already exist. We will create them from nothing.</p>
+<h3>Step 0A — make sure Go is available</h3>
+<p>Open a terminal and ask Go for its version:</p>
+<pre><code>go version</code></pre>
+<p>You should see a line beginning with <code>go version</code>. The exact version and operating system can differ. If the shell says that <code>go</code> is not found, install Go first and come back when this command works. Everything else in the chapter assumes the Go toolchain is available.</p>
+<h3>Step 0B — create a clean project directory</h3>
+<p>Now create a folder for the project and move into it:</p>
+<pre><code>mkdir minisqlite
+cd minisqlite</code></pre>
+<p>From this point onward, run the chapter's commands inside this directory. Keeping the project isolated matters because we are going to create real database files and inspect them later.</p>
+<h3>Step 0C — initialize the Go module</h3>
+<p>A Go module gives the project a module identity and creates <code>go.mod</code>. We do not need third-party packages in Part 1, but using a module gives us the normal modern Go project structure from the beginning.</p>
+<pre><code>go mod init minidb</code></pre>
+<p>After this command, your directory should contain:</p>
+<div class="filetree">minisqlite/
+└── go.mod</div>
+<p>Open <code>go.mod</code>. It will be tiny. That is fine. Do not add dependencies; Part 1 deliberately uses only the standard library.</p>
+<h3>Step 0D — create the first <code>main.go</code></h3>
+<p>Create a file named <code>main.go</code> in the same folder and type this deliberately boring program:</p>
+<pre><code>package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("MiniSQLite: starting Part 1")
+}</code></pre>
+<p>We are doing this before any database code for a reason. If this tiny program does not run, a later error could be caused by the project setup rather than the storage logic. Good systems debugging removes uncertainty one layer at a time.</p>
+<div class="run"><strong>Run checkpoint 0</strong><code>go run .</code><br/><br/>You should see:<br/><code>MiniSQLite: starting Part 1</code></div>
+<p>If that works, your project now has a known-good baseline:</p>
+<div class="filetree">minisqlite/
+├── go.mod
+└── main.go</div>
+<h3>How we will edit the project from here</h3>
+<p>We will mostly stay in this one <code>main.go</code> file for Part 1 so storage ideas are not hidden behind package structure. That is a teaching choice, not a claim that every production Go project should have one file.</p>
+<p>Each section will tell you one of three things: <strong>add</strong> a declaration, <strong>change</strong> an existing declaration, or <strong>temporarily replace the body of <code>main</code></strong> so we can test the newest concept. This temporary <code>main</code> is our laboratory. Near the end we replace it with the command shell.</p>
+<div class="box teacher"><strong>Important workshop rule</strong>Do not wait until the end to run the code. Type a small change, run <code>gofmt -w main.go</code>, then run <code>go run .</code> whenever a checkpoint appears. If something breaks, the bug is probably in the few lines you just added. That is much easier to reason about than debugging 250 pasted lines at once.</div>
+<p>We will also introduce imports only when the code needs them. Go rejects unused imports, so this incremental style keeps each checkpoint honest and compilable.</p>
+<h2 id="goal">2. What are we actually building?</h2>
+<p>When people first learn databases, they often meet them from the outside: SQL statements go in, rows come out. That interface is useful, but it hides the part we want to understand. In this chapter we will work one layer lower. We will ask: if we were forbidden from using SQLite, PostgreSQL, BoltDB, Badger, or any storage library, what is the smallest thing we could build that still deserves to be called persistent storage?</p>
+<p>Our answer will be intentionally primitive. There is one file named <code>minidb.db</code>. There is one kind of row, a user. A user has an ID, name, email, and age. We support four operations: <code>INSERT</code>, <code>GET</code>, <code>SCAN</code>, and <code>DELETE</code>. There is no SQL parser, no B-tree, no transactions, no query optimizer, and no concurrency control.</p>
+<p>That sounds almost too small. Good. The smaller the system, the easier it is to see the ideas that production databases later make more sophisticated.</p>
+<div class="box question"><strong>The question that drives the whole chapter</strong>If our Go process exits, how can another process started tomorrow recover the same users?</div>
+<p>If you can answer that question precisely—not with “the database saves it,” but with which bytes are written where and how they are interpreted later—you have crossed an important line in systems programming.</p>
+<h2 id="persistence">3. RAM, disk, and the persistence problem</h2>
+<p>Start with ordinary Go data:</p>
+<pre><code>users := []string{"alice", "bob", "charlie"}
+fmt.Println(users)</code></pre>
+<p>While the program runs, the slice metadata and the strings are represented in memory. That memory is convenient because the CPU can access it quickly, but it belongs to the running process. When the process ends, we cannot expect those bytes to remain available as our durable database state.</p>
+<div class="grid"><div class="card"><h4>RAM</h4><p>Fast and directly useful to the running program. Excellent for variables, caches, stacks, heaps, and temporary state.</p><p class="mini">But process memory is not our long-term source of truth.</p></div><div class="card"><h4>Persistent storage</h4><p>A file on durable storage can outlive the process that created it. A later process can open the file and read the bytes again.</p><p class="mini">That makes the file a candidate for database state.</p></div></div>
+<p>So the first version of a database can be described without any database vocabulary:</p>
+<div class="box insight"><strong>First principle</strong>A database engine is a program that turns in-memory values into a stable byte representation, writes those bytes to persistent storage, and later reverses the process.</div>
+<p>The verbs matter. We need to <em>encode</em> values into bytes, choose <em>where</em> those bytes live, <em>write</em> them, later <em>read</em> them, and finally <em>decode</em> them back into useful values. Almost everything else in a database grows from making those five actions faster, safer, more concurrent, and more flexible.</p>
+<h2 id="file">4. A file is only bytes</h2>
+<p>A common beginner mistake is to imagine a file as if it already understands rows. It does not. The operating system gives us a byte sequence. We may ask to read bytes starting at position 500, or write bytes starting at position 128, but the file itself does not know that positions 128 through 383 are “Alice.” That meaning exists only because our program establishes a convention.</p>
+<p>Imagine the file as a very long numbered tape:</p>
+<div class="math">byte 0, byte 1, byte 2, byte 3, ...</div>
+<p>If we write the UTF-8 bytes for <code>alice</code>, the file receives five byte values. If we write the integer 30, we must decide how many bytes represent it and in which byte order. If we write two records back to back, we must know where the second begins. Nothing in the file answers those questions for us.</p>
+<p>This is what a <strong>file format</strong> is: an agreement between the writer and the reader about the meaning of byte positions.</p>
+<div class="box teacher"><strong>Teacher's test</strong>If I hand you a hex dump of the file, you should eventually be able to point to a group of bytes and say, “these four bytes are the age,” or “these eight bytes identify the format version.” If you cannot do that, the format is still too vague in your head.</div>
+<h2 id="format">5. Inventing our first on-disk format</h2>
+<p>We need a layout for a user record. The easiest design is fixed-size records: every record occupies exactly the same number of bytes. That is wasteful, but the arithmetic becomes beautifully simple.</p>
+<p>Let us reserve 256 bytes for every user:</p>
+<div class="bytes"><div class="seg id">ID<br/><b>8</b></div><div class="seg del">deleted<br/><b>1</b></div><div class="seg name">name<br/><b>32</b></div><div class="seg email">email<br/><b>64</b></div><div class="seg age">age<br/><b>4</b></div><div class="seg pad">unused/padding<br/><b>147</b></div></div>
+<div class="caption">8 + 1 + 32 + 64 + 4 + 147 = 256 bytes</div>
+<p>Why 256? Not because 256 is magical. It is simply a convenient fixed size for the exercise. We could choose 128, 300, or 512. What matters is that both the writer and reader agree.</p>
+<p>The first nine bytes are easy: eight bytes for a signed-looking ID that we encode as a 64-bit value, then one byte that acts as a deletion marker. After that, the name gets exactly 32 bytes and the email gets exactly 64 bytes. The age gets four bytes. The rest is unused.</p>
+<p>Immediately, two problems should bother you. A two-character name wastes most of its 32-byte region. A long email may not fit. Do not solve those yet. Those problems are valuable because they will motivate variable-length records and pages later. Good systems courses often become confusing when they introduce sophisticated machinery before the student has personally felt the simpler design fail.</p>
+<div class="box warning"><strong>Deliberate limitation</strong>For this version we will reject names longer than 32 bytes and emails longer than 64 bytes. Silent truncation is easy to demonstrate but dangerous as an API: the caller might believe one value was stored while a different value was actually persisted.</div>
+<h3>Fixed-size versus variable-size</h3>
+<table><thead><tr><th>Question</th><th>Fixed-size record</th><th>Variable-size record</th></tr></thead><tbody>
+<tr><td>Can we calculate where record N starts?</td><td>Yes, directly with arithmetic.</td><td>Not without extra metadata or scanning.</td></tr>
+<tr><td>Space efficiency</td><td>Poor when values are much smaller than reserved fields.</td><td>Usually better.</td></tr>
+<tr><td>Updating a value</td><td>Simple if it still fits the slot.</td><td>May require moving data.</td></tr>
+<tr><td>Implementation complexity</td><td>Low.</td><td>Higher.</td></tr>
+</tbody></table>
+<p>We choose fixed-size records because our learning goal is not “build an efficient database in one chapter.” Our goal is to make direct file access obvious.</p>
+<h2 id="offset">6. The most important equation in Part 1</h2>
+<p>Suppose the first 128 bytes of the file are reserved for a header. Records begin immediately after that header, and every record is 256 bytes. We will give our first user ID 1.</p>
+<p>Where should ID 1 live? Immediately after the header, at byte 128. Where should ID 2 live? One record later, at byte 384. ID 3 begins at byte 640.</p>
+<p>That pattern gives us:</p>
+<div class="math">recordOffset(id) = HeaderSize + (id - 1) × RecordSize</div>
+<table><thead><tr><th>ID</th><th>Calculation</th><th>Offset</th></tr></thead><tbody>
+<tr><td>1</td><td>128 + (1 − 1) × 256</td><td>128</td></tr>
+<tr><td>2</td><td>128 + (2 − 1) × 256</td><td>384</td></tr>
+<tr><td>3</td><td>128 + (3 − 1) × 256</td><td>640</td></tr>
+</tbody></table>
+<p>This one equation is the reason fixed-size records are so easy to retrieve. To fetch ID 900, we do not need to read IDs 1 through 899. We calculate one byte position and ask the operating system to read 256 bytes from there.</p>
+<div class="box insight"><strong>Complexity intuition</strong>Finding the byte position is O(1): the arithmetic takes constant work regardless of how many records exist. That does not mean the whole database is magically fast—disk I/O still matters—but it explains the attraction of direct addressing.</div>
+<h3><span class="step">TYPE 1</span>Add the file-format constants</h3>
+<p>You already have <code>package main</code>, the <code>fmt</code> import, and the temporary <code>main()</code> from setup. Do <em>not</em> replace the whole file. Add this constant block between the import and <code>main()</code>:</p>
+<pre><code>const (
+    HeaderSize  = 128
+    RecordSize  = 256
+    MaxNameLen  = 32
+    MaxEmailLen = 64
+)</code></pre>
+<p>These constants are not mere implementation details. Once a real database file exists, changing them can make old files unreadable. On-disk formats are APIs to your future software.</p>
+<h3><span class="step">TYPE 2</span>Encode the offset rule once</h3>
+<p>Add this function below the constants:</p>
+<pre><code>func recordOffset(id int64) int64 {
+    return int64(HeaderSize) + (id-1)*int64(RecordSize)
+}</code></pre>
+<p>Putting the equation in a helper is more important than it looks. If <code>Insert</code>, <code>Get</code>, and <code>Delete</code> each repeat the arithmetic independently, one small mismatch can corrupt your mental model and your file. One function means one rule.</p>
+<p>Now temporarily replace only the body of <code>main()</code> with:</p>
+<pre><code>func main() {
+    fmt.Println("id=1 offset=", recordOffset(1))
+    fmt.Println("id=2 offset=", recordOffset(2))
+    fmt.Println("id=3 offset=", recordOffset(3))
+}</code></pre>
+<div class="run"><strong>Run checkpoint 1</strong><code>gofmt -w main.go</code><br/><code>go run .</code><br/><br/>Expected offsets: <code>128</code>, <code>384</code>, <code>640</code>.</div>
+<div class="checkpoint"><h4>Checkpoint: do the arithmetic without Go</h4><p>Before continuing, calculate the offset for IDs 1, 2, 10, and 100. Then run the same calculations mentally backward: if a record begins at byte 2432, which ID is it? The goal is to make the layout concrete, not symbolic.</p></div>
+<h2 id="header">7. Why put a header at the front?</h2>
+<p>Why waste the first 128 bytes? Because a raw file needs identity. Imagine opening a random file and treating bytes 128–383 as one of our records. Without metadata, we have no quick way to know whether the file is actually ours or whether it was written by an incompatible version of the program.</p>
+<p>We will put two pieces of metadata in the header:</p>
+<table><thead><tr><th>Header bytes</th><th>Meaning</th></tr></thead><tbody><tr><td>0–7</td><td>Eight “magic” bytes: <code>MINIDB01</code></td></tr><tr><td>8–11</td><td>A 32-bit format version, starting at 1</td></tr><tr><td>12–127</td><td>Reserved for future metadata</td></tr></tbody></table>
+<p>A magic value is simply a recognizable signature. Many file formats use one. It lets the reader reject nonsense early instead of interpreting arbitrary bytes as valid database state.</p>
+<p>The version serves a different purpose. Suppose Part 6 of our project changes the record layout. Version metadata gives newer code a chance to say, “I understand version 1” or “this is version 3 and I need a migration path.”</p>
+<h3><span class="step">TYPE 3</span>Define the in-memory store</h3>
+<p>We are about to mention <code>os.File</code>, so expand the import section first:</p>
+<pre><code>import (
+    "fmt"
+    "os"
+)</code></pre>
+<p>Then add the store type below <code>recordOffset</code>:</p>
+<pre><code>type Store struct {
+    file *os.File
+}</code></pre>
+<p>Notice what <code>Store</code> does <em>not</em> contain: it does not contain a slice of all users. The file is the durable state. <code>Store</code> is primarily a handle through which our code performs reads and writes.</p>
+<h3><span class="step">TYPE 4</span>Teach the program to write a new header</h3>
+<p>First, think in English:</p>
+<ol><li>Open the path for reading and writing. Create it if it does not exist.</li><li>Ask for its current size.</li><li>If the size is zero, this is a new file, so write our header.</li><li>If it already contains data, validate the header before trusting it.</li></ol>
+<p>This step needs <code>encoding/binary</code>. Add it to the import block so the imports are now <code>"encoding/binary"</code>, <code>"fmt"</code>, and <code>"os"</code>.</p>
+<p>Now type only the initialization idea:</p>
+<pre><code>func writeNewHeader(file *os.File) error {
+    header := make([]byte, HeaderSize)
+    copy(header[0:8], []byte("MINIDB01"))
+    binary.LittleEndian.PutUint32(header[8:12], 1)
+
+    _, err := file.WriteAt(header, 0)
+    return err
+}</code></pre>
+<p>This is our first encounter with endianness. An integer is larger than one byte, so we need a rule for which byte stores which part of the number. We choose little-endian and use the same rule when reading. You do not need to memorize byte-order history. The important lesson is consistency: bytes have no inherent “uint32” type, so the format must specify how an integer becomes bytes.</p>
+<div class="box teacher"><strong>Why <code>WriteAt</code>?</strong>It makes the location explicit. “Write these bytes at offset 0” mirrors the way we are reasoning about the file. Later, records will be written at their calculated offsets.</div>
+<h3><span class="step">TYPE 5</span>Now build <code>Open</code> in two small pieces</h3>
+<p>Writing a header is only half of opening a database. Existing files need to be checked before we trust them. First add a validator:</p>
+<pre><code>func validateHeader(file *os.File, size int64) error {
+    if size &lt; int64(HeaderSize) {
+        return fmt.Errorf("database file is too small to contain a valid header")
+    }
+
+    header := make([]byte, HeaderSize)
+    if _, err := file.ReadAt(header, 0); err != nil {
+        return err
+    }
+
+    if string(header[0:8]) != "MINIDB01" {
+        return fmt.Errorf("not a MiniDB file: bad magic bytes")
+    }
+
+    version := binary.LittleEndian.Uint32(header[8:12])
+    if version != 1 {
+        return fmt.Errorf("unsupported database version %d", version)
+    }
+
+    dataBytes := size - int64(HeaderSize)
+    if dataBytes%int64(RecordSize) != 0 {
+        return fmt.Errorf("database file has a partial/corrupt record region")
+    }
+
+    return nil
+}</code></pre>
+<p>Read that slowly. We are not checking user data yet. We are checking whether the <em>container itself</em> has the shape our program expects: enough bytes for a header, the right magic value, a version we understand, and a record area whose size is divisible by 256.</p>
+<p>Now add the real <code>Open</code> function and a matching <code>Close</code>:</p>
+<pre><code>func Open(path string) (*Store, error) {
+    file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+    if err != nil {
+        return nil, err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return nil, err
+    }
+
+    if info.Size() == 0 {
+        if err := writeNewHeader(file); err != nil {
+            file.Close()
+            return nil, err
+        }
+    } else if err := validateHeader(file, info.Size()); err != nil {
+        file.Close()
+        return nil, err
+    }
+
+    return &amp;Store{file: file}, nil
+}
+
+func (s *Store) Close() error {
+    return s.file.Close()
+}</code></pre>
+<p>Temporarily replace <code>main()</code> again so it does one job: open a database and close it.</p>
+<pre><code>func main() {
+    store, err := Open("lesson.db")
+    if err != nil {
+        fmt.Println("open error:", err)
+        return
+    }
+    defer store.Close()
+
+    fmt.Println("opened lesson.db successfully")
+}</code></pre>
+<div class="run"><strong>Run checkpoint 2</strong><code>gofmt -w main.go</code><br/><code>go run .</code><br/><code>ls -l lesson.db</code><br/><br/>The first run should create <code>lesson.db</code>. Its size should be 128 bytes because it currently contains only the header. Run <code>go run .</code> a second time: now <code>Open</code> follows the existing-file path and validates the same header.</div>
+<div class="box insight"><strong>What you just built</strong>Before we have inserted a single user, we already have a real file format with identity and versioning. That is a useful separation: “is this a valid MiniDB file?” is a different question from “what rows are inside it?”</div>
+<h2 id="encode">8. Separate the storage problem from the encoding problem</h2>
+<p>Before writing <code>Insert</code>, resist the urge to mix everything into one function. There are actually two different jobs:</p>
+<p><strong>Job A:</strong> turn a Go value into exactly 256 bytes. <strong>Job B:</strong> decide where those 256 bytes belong in the file and write them there.</p>
+<p>If we separate those jobs, <code>Insert</code> becomes easy to read and <code>Get</code> can reuse the reverse transformation.</p>
+<h3>Our in-memory value</h3>
+<p>Add this type next to <code>Store</code>. It is safe for the type to exist before we have any users in the file.</p>
+<pre><code>type User struct {
+    ID      int64
+    Deleted bool
+    Name    string
+    Email   string
+    Age     int32
+}</code></pre>
+<p>This struct is an in-memory representation. Do not assume Go's struct layout is automatically our disk format. Compilers may insert padding, representation details can matter, and directly dumping memory would couple the file format to implementation details. We will explicitly encode each field.</p>
+<h3><span class="step">TYPE 6</span>Encode one user</h3>
+<p>No new import is needed here: <code>fmt</code> and <code>encoding/binary</code> are already present. Add:</p>
+<pre><code>func encodeUser(u User) ([]byte, error) {
+    if len([]byte(u.Name)) &gt; MaxNameLen {
+        return nil, fmt.Errorf("name is longer than %d bytes", MaxNameLen)
+    }
+    if len([]byte(u.Email)) &gt; MaxEmailLen {
+        return nil, fmt.Errorf("email is longer than %d bytes", MaxEmailLen)
+    }
+
+    record := make([]byte, RecordSize)
+    binary.LittleEndian.PutUint64(record[0:8], uint64(u.ID))
+
+    if u.Deleted {
+        record[8] = 1
+    }
+
+    copy(record[9:41], []byte(u.Name))
+    copy(record[41:105], []byte(u.Email))
+    binary.LittleEndian.PutUint32(record[105:109], uint32(u.Age))
+
+    return record, nil
+}</code></pre>
+<p>Read the indexes as a map. Bytes 0 through 7 hold the ID. Byte 8 is the tombstone. The name begins at 9 and stops just before 41, giving 32 bytes. Email occupies 41 through 104, giving 64 bytes. Age occupies 105 through 108, giving 4 bytes. Everything from 109 through 255 remains zero.</p>
+<p>The zero-filled remainder is not doing anything useful yet. It exists because our record contract says “256 bytes every time.” That waste is not a bug in our implementation; it is a consequence of our design choice.</p>
+<h3><span class="step">TYPE 7</span>Decode the same bytes</h3>
+<p>Decoding text needs one new standard-library package. Add <code>"strings"</code> to the import block, then add:</p>
+<pre><code>func decodeUser(record []byte) (User, error) {
+    if len(record) != RecordSize {
+        return User{}, fmt.Errorf("expected %d bytes, got %d", RecordSize, len(record))
+    }
+
+    u := User{
+        ID:      int64(binary.LittleEndian.Uint64(record[0:8])),
+        Deleted: record[8] == 1,
+        Name:    strings.TrimRight(string(record[9:41]), "\x00"),
+        Email:   strings.TrimRight(string(record[41:105]), "\x00"),
+        Age:     int32(binary.LittleEndian.Uint32(record[105:109])),
+    }
+
+    return u, nil
+}</code></pre>
+<p>Why trim <code>\x00</code>? If the name is <code>Al</code>, only two bytes in its 32-byte region are used. The remaining bytes are zero because <code>make([]byte, RecordSize)</code> creates a zero-filled slice. When we decode, we remove those trailing zero bytes so the in-memory string becomes <code>Al</code>, not <code>Al</code> followed by thirty NUL characters.</p>
+<div class="checkpoint"><h4>Checkpoint: pretend to be the decoder</h4><p>If bytes 9–13 contain <code>alice</code> and bytes 14–40 are zero, what string should the decoder return? If byte 8 changes from 0 to 1 while every other byte stays the same, what changed logically? If you can answer those immediately, the record layout is becoming real.</p></div>
+<p>Now test the encoder and decoder <em>without touching the file</em>. Replace the temporary <code>main()</code> body with:</p>
+<pre><code>func main() {
+    original := User{ID: 1, Name: "alice", Email: "alice@example.com", Age: 30}
+
+    record, err := encodeUser(original)
+    if err != nil {
+        fmt.Println("encode error:", err)
+        return
+    }
+
+    decoded, err := decodeUser(record)
+    if err != nil {
+        fmt.Println("decode error:", err)
+        return
+    }
+
+    fmt.Printf("%+v\n", decoded)
+}</code></pre>
+<div class="run"><strong>Run checkpoint 3</strong><code>gofmt -w main.go</code><br/><code>go run .</code><br/><br/>You should get Alice back with ID 1 and age 30. At this checkpoint there is no database I/O at all. We are proving that the byte transformation is reversible before mixing it with file positioning.</div>
+<h2 id="insert">9. Build INSERT from pieces we already understand</h2>
+<p>Only now are we ready to insert. Notice how little new theory is required. We already know how to encode a record and where a record with a given ID belongs.</p>
+<p>We still need one decision: how do we choose the next ID? Our simple file is append-only with respect to record slots. If the file contains N complete record slots after the header, the next ID is N + 1.</p>
+<div class="math">numberOfRecords = (fileSize − HeaderSize) / RecordSize</div>
+<p>If the file is exactly 128 bytes, it contains zero records. If it is 384 bytes, it contains one 256-byte record after the header. If it is 640 bytes, it contains two.</p>
+<h3><span class="step">TYPE 8</span>Find the next ID</h3>
+<pre><code>func (s *Store) nextID() (int64, error) {
+    info, err := s.file.Stat()
+    if err != nil {
+        return 0, err
+    }
+
+    count := (info.Size() - int64(HeaderSize)) / int64(RecordSize)
+    return count + 1, nil
+}</code></pre>
+<p>This works because we never physically remove a record slot. Deleting a user only flips a flag. Therefore the file size still tells us how many slots have ever been allocated.</p>
+<h3><span class="step">TYPE 9</span>Insert one record</h3>
+<pre><code>func (s *Store) Insert(name, email string, age int32) (int64, error) {
+    id, err := s.nextID()
+    if err != nil {
+        return 0, err
+    }
+
+    record, err := encodeUser(User{
+        ID:    id,
+        Name:  name,
+        Email: email,
+        Age:   age,
+    })
+    if err != nil {
+        return 0, err
+    }
+
+    if _, err := s.file.WriteAt(record, recordOffset(id)); err != nil {
+        return 0, err
+    }
+
+    return id, nil
+}</code></pre>
+<p>Read this function almost like a sentence: get an ID; encode a user; calculate its slot; write the bytes. The function is short because we pushed detailed concerns into helpers whose names carry meaning.</p>
+<div class="box insight"><strong>A systems-design habit worth keeping</strong>When a low-level function feels impossible to understand, look for multiple concepts that have been collapsed together. Separating “encode,” “locate,” and “write” often turns one dense block into three obvious ideas.</div>
+<p>Time to combine the pieces for the first time. Replace <code>main()</code> with this small experiment:</p>
+<pre><code>func main() {
+    store, err := Open("lesson.db")
+    if err != nil {
+        fmt.Println("open error:", err)
+        return
+    }
+    defer store.Close()
+
+    id, err := store.Insert("alice", "alice@example.com", 30)
+    if err != nil {
+        fmt.Println("insert error:", err)
+        return
+    }
+
+    fmt.Println("inserted id=", id)
+}</code></pre>
+<div class="run"><strong>Run checkpoint 4</strong>If <code>lesson.db</code> is still the 128-byte file from checkpoint 2, run <code>go run .</code> once. Alice should receive ID 1. Check the file size afterward: it should now be 384 bytes = 128-byte header + one 256-byte record. If you run the program again without deleting the file, it inserts another record and the ID increases. That behavior is coming from file size, not from an in-memory counter.</div>
+<h3>What persistence have we achieved?</h3>
+<p>After a successful write, the operating system has accepted our bytes for the file. On a normal close and restart, we expect to read them again. That is enough for this chapter's persistence experiment.</p>
+<p>It is <em>not</em> yet transaction durability. A power loss at the wrong time, torn writes, storage errors, or a crash between multiple related writes can still leave state we do not know how to repair. Later database mechanisms such as journaling and write-ahead logging exist because “I called Write” is not the end of the reliability story.</p>
+<h2 id="get">10. GET is the inverse of INSERT</h2>
+<p>To retrieve a user by ID, we should not scan from the beginning. Fixed-size records bought us a direct address. The procedure is:</p>
+<ol><li>Validate that the ID is positive.</li><li>Calculate <code>recordOffset(id)</code>.</li><li>Read exactly 256 bytes from that position.</li><li>Decode those bytes.</li><li>If the tombstone is set, report the row as deleted.</li></ol>
+<p><code>Get</code> needs two more standard packages: <code>"errors"</code> for comparing domain errors and <code>"io"</code> for recognizing an attempted read beyond the end of the file. Add both to the import block.</p>
+<p>Before writing the function, define two domain errors so callers can distinguish “missing” from “deleted” without matching strings:</p>
+<pre><code>var (
+    ErrNotFound = errors.New("record not found")
+    ErrDeleted  = errors.New("record deleted")
+)</code></pre>
+<h3><span class="step">TYPE 10</span>Read one record slot</h3>
+<pre><code>func (s *Store) Get(id int64) (User, error) {
+    if id &lt; 1 {
+        return User{}, ErrNotFound
+    }
+
+    record := make([]byte, RecordSize)
+    if _, err := s.file.ReadAt(record, recordOffset(id)); err != nil {
+        if errors.Is(err, io.EOF) {
+            return User{}, ErrNotFound
+        }
+        return User{}, err
+    }
+
+    u, err := decodeUser(record)
+    if err != nil {
+        return User{}, err
+    }
+    if u.Deleted {
+        return User{}, ErrDeleted
+    }
+    return u, nil
+}</code></pre>
+<p>The important line is still the offset calculation. We jump directly to the record's slot. The decoder then gives meaning back to those bytes.</p>
+<p>There is a subtle philosophical point here: the ID is both logical data and part of our addressing scheme. Because IDs are dense and monotonically increasing, we can map them to slots with arithmetic. Real databases usually cannot rely on such a simple relationship, which is why indexes become essential.</p>
+<p>Test the read path immediately. You do not need to insert again if <code>lesson.db</code> already contains Alice:</p>
+<pre><code>func main() {
+    store, err := Open("lesson.db")
+    if err != nil {
+        fmt.Println("open error:", err)
+        return
+    }
+    defer store.Close()
+
+    user, err := store.Get(1)
+    if err != nil {
+        fmt.Println("get error:", err)
+        return
+    }
+
+    fmt.Printf("id=%d name=%s email=%s age=%d\n",
+        user.ID, user.Name, user.Email, user.Age)
+}</code></pre>
+<div class="run"><strong>Run checkpoint 5</strong><code>go run .</code> should reconstruct ID 1 from bytes already stored in <code>lesson.db</code>. This is the first checkpoint where a fresh process proves persistence by reading a value written by an earlier run.</div>
+<h2 id="scan">11. SCAN shows us the cost we have been avoiding</h2>
+<p><code>GET 900</code> is cheap because ID 900 tells us where to jump. But what if we want “all users”? Or “the user whose email is bob@example.com”? Without an index on email, the only general strategy is to inspect records one by one.</p>
+<p>That is a scan.</p>
+<h3><span class="step">TYPE 11</span>Count slots, then visit each ID</h3>
+<pre><code>func (s *Store) Scan() ([]User, error) {
+    info, err := s.file.Stat()
+    if err != nil {
+        return nil, err
+    }
+
+    count := (info.Size() - int64(HeaderSize)) / int64(RecordSize)
+    users := make([]User, 0, count)
+
+    for id := int64(1); id &lt;= count; id++ {
+        u, err := s.Get(id)
+        if errors.Is(err, ErrDeleted) {
+            continue
+        }
+        if err != nil {
+            return nil, err
+        }
+        users = append(users, u)
+    }
+
+    return users, nil
+}</code></pre>
+<p>This is deliberately straightforward, even a little inefficient. We repeatedly call <code>Get</code> so the deletion logic and decoding stay in one place. Later, once performance matters, we might scan sequential bytes more efficiently. But clarity wins today.</p>
+<div class="box question"><strong>Now feel the future problem</strong>If there are 10 records, scanning is fine. If there are 10 million records and we need one email address, reading every record is a terrible plan. What data structure could tell us where to jump? That question will eventually lead us toward indexes and B-trees.</div>
+<p>For a small practical check, temporarily make <code>main()</code> call <code>store.Scan()</code> and loop over the returned users. Do not build the command shell yet. The important thing is to see that <code>Scan</code> is only orchestration over the <code>Get</code> primitive you already trust.</p>
+<div class="run"><strong>Run checkpoint 6</strong>Insert two or three users with the previous temporary <code>main()</code>, then switch <code>main()</code> to a scan test. Confirm that every allocated, non-deleted record appears. This is a good moment to inspect how the time would grow if the file had thousands of slots instead of three.</div>
+<h2 id="delete">12. DELETE without moving anything</h2>
+<p>Physical deletion is awkward in a fixed-slot file. Suppose record 2 sits between records 1 and 3. If we removed its 256 bytes from the middle of the file, record 3 would move. Then our beautiful mapping between ID and offset would break.</p>
+<p>So we take the lazy option: keep the slot, but mark it dead. That marker is usually called a <strong>tombstone</strong>.</p>
+<p>Because our tombstone is exactly byte 8 inside the record, deletion can be extremely small: verify the record exists, then write one byte.</p>
+<h3><span class="step">TYPE 12</span>Flip the tombstone</h3>
+<pre><code>func (s *Store) Delete(id int64) error {
+    if _, err := s.Get(id); err != nil {
+        return err
+    }
+
+    _, err := s.file.WriteAt([]byte{1}, recordOffset(id)+8)
+    return err
+}</code></pre>
+<p>This teaches two useful ideas at once. First, deletion can be a logical state change rather than physical removal. Second, random-access writes do not need to rewrite an entire file—or even an entire record—when the format gives us a precise location.</p>
+<p>Of course, the tombstone leaves a hole. If half the records are deleted, half the record area is wasted. Later we might maintain a free list so new inserts reuse deleted slots, or compact the file. Again, a database feature appears naturally because the naive design develops a pain point.</p>
+<p>Test deletion in two stages: call <code>Delete(1)</code>, then call <code>Get(1)</code>. The second call should return <code>ErrDeleted</code>. Also check the file size: deleting the record must <em>not</em> shrink the file, because the 256-byte slot still exists.</p>
+<div class="run"><strong>Run checkpoint 7</strong>This is the moment to connect the logical word “delete” to the physical reality: one byte changed from 0 to 1. We will verify that directly with <code>xxd</code> in the inspection section.</div>
+<h2 id="cli">13. Add a tiny shell only after the storage layer works</h2>
+<p>It is tempting to begin with command parsing because a prompt feels like a database. But the command shell is not the interesting part. We intentionally postponed it until the storage API had a clear shape.</p>
+<p>Our shell will understand:</p>
+<pre><code>INSERT alice alice@example.com 30
+GET 1
+SCAN
+DELETE 1
+EXIT</code></pre>
+<p>We will use <code>strings.Fields</code>, so names cannot contain spaces in this toy interface. That is a parser limitation, not a storage limitation. A real SQL parser is a separate project.</p>
+<p>The main loop is conceptually simple:</p>
+<ol><li>Print <code>minidb&gt;</code>.</li><li>Read one line.</li><li>Split it into fields.</li><li>Dispatch on the first word.</li><li>Call the storage method.</li><li>Print the result or error.</li></ol>
+<div class="box teacher"><strong>Layering matters</strong>The shell should not calculate byte offsets. <code>Insert</code> should not know how terminal input is tokenized. The CLI is one layer; the store is another. Even tiny projects are easier to reason about when responsibilities stay separate.</div>
+<h3><span class="step">TYPE 13</span>Turn the temporary <code>main()</code> into a prompt</h3>
+<p>The interactive shell needs <code>bufio</code>, so add <code>"bufio"</code> to the imports. Start with a loop that only reads input and recognizes <code>EXIT</code>. This isolates terminal I/O before command parsing:</p>
+<pre><code>scanner := bufio.NewScanner(os.Stdin)
+
+for {
+    fmt.Print("minidb&gt; ")
+    if !scanner.Scan() {
+        fmt.Println()
+        break
+    }
+
+    line := strings.TrimSpace(scanner.Text())
+    if strings.EqualFold(line, "EXIT") {
+        return
+    }
+
+    fmt.Println("you typed:", line)
+}</code></pre>
+<p>Put that loop inside <code>main()</code> after opening the database. Run it and type a few lines. At this stage the shell is intentionally stupid; we are proving the read-evaluate-loop shape first.</p>
+<h3><span class="step">TYPE 14</span>Split one command into words</h3>
+<p>Replace the <code>line</code>/echo portion with:</p>
+<pre><code>parts := strings.Fields(scanner.Text())
+if len(parts) == 0 {
+    continue
+}
+
+command := strings.ToUpper(parts[0])
+fmt.Println("command:", command, "arguments:", parts[1:])</code></pre>
+<p>Now type <code>INSERT alice alice@example.com 30</code>. You should see that the first token is the command and the remaining tokens are arguments. This is the tiny parser our toy shell needs.</p>
+<h3><span class="step">TYPE 15</span>Dispatch to storage methods</h3>
+<p>At this point, add a <code>switch command</code>. Do it one case at a time: first <code>SCAN</code> because it needs no argument parsing, then <code>GET</code> and <code>DELETE</code>, and finally <code>INSERT</code>. The numeric commands need <code>strconv</code>, so add <code>"strconv"</code> when you reach them.</p>
+<p>For example, the <code>GET</code> branch should do three jobs and no more: verify there are two tokens, parse the ID, then call <code>store.Get(id)</code>. The branch should never know that an ID maps to <code>HeaderSize + (id-1)*RecordSize</code>. That remains the storage layer's responsibility.</p>
+<div class="run"><strong>Run checkpoint 8</strong>Once your four cases are wired, start the program and manually execute <code>INSERT</code> → <code>GET</code> → <code>SCAN</code> → <code>DELETE</code> → <code>SCAN</code> → <code>EXIT</code>. If something fails, test the individual storage method again before blaming the parser.</div>
+<p>We intentionally have not pasted the finished <code>switch</code> here. You have already written every storage operation it calls. The complete CLI wiring appears once, at the end, where you can compare your version with the assembled program.</p>
+<h2 id="inspect">14. The most important practical exercise: inspect the bytes</h2>
+<p>If you only run commands and see friendly output, the project can still feel magical. The cure is to open the database file with a hex viewer.</p>
+<p>After building the final program, try:</p>
+<pre><code>go build -o minidb .
+./minidb minidb.db
+
+minidb&gt; INSERT alice alice@example.com 30
+inserted id=1
+minidb&gt; INSERT bob bob@example.com 25
+inserted id=2
+minidb&gt; EXIT
+
+xxd -g 1 -l 700 minidb.db</code></pre>
+<p>Do not rush past the output. Find the ASCII bytes for <code>MINIDB01</code> at the beginning. Then move to offset 128, where record 1 begins. The first eight bytes encode ID 1. Byte 136—eight bytes after the start of the record—is the deleted flag. Soon after that you should see the characters of <code>alice</code>. At offset 384, record 2 begins.</p>
+<p>Now delete Alice and inspect again:</p>
+<pre><code>./minidb minidb.db
+minidb&gt; DELETE 1
+record 1 deleted
+minidb&gt; EXIT
+
+xxd -g 1 -s 128 -l 32 minidb.db</code></pre>
+<p>Most of the first record should be unchanged. The tombstone byte should now be <code>01</code>. You have just watched a logical database operation become one byte mutation on disk.</p>
+<div class="checkpoint"><h4>Checkpoint: persistence test</h4><p>Insert two users. Exit the process completely. Start it again with the same file. Run <code>SCAN</code>. If the users reappear, the second process did not “remember” them in RAM; it reconstructed them from your file format. That is the core achievement of Part 1.</p></div>
+<h3>Try a corruption experiment</h3>
+<p>Make a copy first. Then modify a byte inside a name or age field and run <code>GET</code>. Our current program has no checksum, so it may happily decode corrupted bytes as if they were legitimate. That is not a surprising failure; it is a missing feature. Detection requires extra information such as checksums, structural validation, or stronger page formats.</p>
+<p>This is an important engineering mindset: reliability features are not decorative. Each one answers a concrete failure mode.</p>
+<h2 id="limits">15. What our database gets wrong—and why that is useful</h2>
+<p>Our tiny store is enough to teach persistence, byte layouts, direct addressing, encoding, scanning, and tombstones. It is nowhere near enough for production use. The deficiencies are the syllabus for the next parts.</p>
+<table><thead><tr><th>Pain</th><th>Where it comes from</th><th>What it motivates</th></tr></thead><tbody>
+<tr><td>Wasted space</td><td>Every name gets 32 bytes and every email gets 64 even when values are tiny.</td><td>Variable-length cells, slotted pages, overflow storage.</td></tr>
+<tr><td>Hard field limits</td><td>Fixed regions cannot hold arbitrarily long values.</td><td>Length-prefixed values and overflow pages.</td></tr>
+<tr><td>Slow search by non-ID fields</td><td>There is no structure mapping email or name to a record location.</td><td>Indexes, commonly B-trees or related structures.</td></tr>
+<tr><td>Deleted space is wasted</td><td>Tombstones preserve slots forever.</td><td>Free lists, slot reuse, vacuum/compaction.</td></tr>
+<tr><td>No atomic multi-step changes</td><td>Writes happen directly to the main file.</td><td>Journaling or write-ahead logging.</td></tr>
+<tr><td>No crash recovery</td><td>We do not record enough intent to repair interrupted updates.</td><td>Recovery protocols, checksums, WAL.</td></tr>
+<tr><td>No concurrency protocol</td><td>Two writers can race without coordination.</td><td>Locks, latches, MVCC, transaction isolation.</td></tr>
+<tr><td>No caching strategy</td><td>We delegate everything to basic file reads/writes.</td><td>Pages and a buffer pool.</td></tr>
+</tbody></table>
+<h3>The “pages” idea should now feel motivated</h3>
+<p>Production databases rarely think in terms of “one application record equals one arbitrary file write.” They organize storage into pages: fixed-size blocks that become units of I/O, caching, checksumming, locking, and recovery. Once records can be variable-length, a page also needs metadata describing where its cells live.</p>
+<p>If we introduced pages at the beginning, they would look like ceremony. After building this version, we can see what they solve. That is the learning strategy for the whole MiniSQLite series: build the naive thing, observe exactly where it hurts, then introduce one mechanism that answers that pain.</p>
+<h3>One subtle issue: clean persistence is not crash safety</h3>
+<p>There is a temptation to say, “we wrote to disk, therefore it is durable.” Real storage stacks are more complicated. The operating system may buffer writes. Devices may have their own caches. A process can crash after one write but before another. A machine can lose power during an update. Files can be partially written or corrupted.</p>
+<p><code>fsync</code>/<code>Sync</code> can be part of a durability story, but even that is not a transaction protocol. If one logical transaction needs to update multiple pieces of state, we need a way to recover after interruption. That is why databases develop journals or WALs. Part 1 does not solve this; it names the boundary honestly.</p>
+<h3>Another subtle issue: bytes versus characters</h3>
+<p>Our limits are byte limits, not “human character” limits. UTF-8 characters can use more than one byte. A 32-character name is not guaranteed to fit in 32 bytes. This is another reason fixed-size text fields become awkward. For the exercise, think in terms of byte storage, because that is what the file ultimately contains.</p>
+<h2>16. Suggested exercises before looking at the complete program</h2>
+<p>Try these in order. They are designed to check whether you understand the mechanics rather than whether you can copy syntax.</p>
+<ol>
+<li><strong>Offset drill.</strong> Without running code, compute the starting byte of IDs 1, 2, 7, and 1000. Then verify by printing <code>recordOffset</code>.</li>
+<li><strong>Persistence drill.</strong> Insert three users, exit, restart, and fetch all three. Explain in one paragraph why the second process can reconstruct them.</li>
+<li><strong>Hex drill.</strong> Use <code>xxd</code> to find the header, ID, tombstone, name, email, and age of the first record.</li>
+<li><strong>Tombstone drill.</strong> Record the first 32 bytes of a row before and after deletion. Identify the exact byte that changes.</li>
+<li><strong>Space drill.</strong> For name <code>A</code> and email <code>a@b.co</code>, calculate how many bytes in the 256-byte record are semantically useful and how many are reserved/unused.</li>
+<li><strong>Scale drill.</strong> Insert 10,000 records and time <code>SCAN</code>. Repeat with 100,000. Explain why runtime should grow roughly with the number of records.</li>
+<li><strong>Design drill.</strong> Sketch, without coding, how you might reuse deleted slots. What extra metadata would you need?</li>
+<li><strong>Reliability drill.</strong> List three moments where a crash could leave surprising state. Do not fix them yet; just identify the failure modes precisely.</li>
+</ol>
+<hr/>
+<h2 id="full">17. Complete program — now assemble what we built</h2>
+<p>At this point your project is still intentionally small:</p>
+<div class="filetree">minisqlite/
+├── go.mod
+├── main.go
+├── lesson.db      ← created during checkpoints; safe to delete when you want a clean test
+└── minidb.db      ← created when you run the finished CLI</div>
+<p><code>lesson.db</code> is not source code. It is a binary artifact produced by your program. Keeping that distinction clear—program versus persisted state—is part of the lesson.</p>
+<div class="final"><h3>Only read this after the incremental sections</h3><p>The final file should feel like a collection of ideas you already understand: header validation, one record layout, one offset equation, explicit encode/decode helpers, and four operations layered on top.</p></div>
+<pre><code>package main
+
+import (
+    "bufio"
+    "encoding/binary"
+    "errors"
+    "fmt"
+    "io"
+    "os"
+    "strconv"
+    "strings"
+)
+
+const (
+    HeaderSize  = 128
+    RecordSize  = 256
+    MaxNameLen  = 32
+    MaxEmailLen = 64
+)
+
+var (
+    ErrNotFound = errors.New("record not found")
+    ErrDeleted  = errors.New("record deleted")
+)
+
+type Store struct {
+    file *os.File
+}
+
+type User struct {
+    ID      int64
+    Deleted bool
+    Name    string
+    Email   string
+    Age     int32
+}
+
+func recordOffset(id int64) int64 {
+    return int64(HeaderSize) + (id-1)*int64(RecordSize)
+}
+
+func writeNewHeader(file *os.File) error {
+    header := make([]byte, HeaderSize)
+    copy(header[0:8], []byte("MINIDB01"))
+    binary.LittleEndian.PutUint32(header[8:12], 1)
+
+    _, err := file.WriteAt(header, 0)
+    return err
+}
+
+func validateHeader(file *os.File, size int64) error {
+    if size &lt; int64(HeaderSize) {
+        return fmt.Errorf("database file is too small to contain a valid header")
+    }
+
+    header := make([]byte, HeaderSize)
+    if _, err := file.ReadAt(header, 0); err != nil {
+        return err
+    }
+
+    if string(header[0:8]) != "MINIDB01" {
+        return fmt.Errorf("not a MiniDB file: bad magic bytes")
+    }
+
+    version := binary.LittleEndian.Uint32(header[8:12])
+    if version != 1 {
+        return fmt.Errorf("unsupported database version %d", version)
+    }
+
+    dataBytes := size - int64(HeaderSize)
+    if dataBytes%int64(RecordSize) != 0 {
+        return fmt.Errorf("database file has a partial/corrupt record region")
+    }
+
+    return nil
+}
+
+func Open(path string) (*Store, error) {
+    file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+    if err != nil {
+        return nil, err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return nil, err
+    }
+
+    if info.Size() == 0 {
+        if err := writeNewHeader(file); err != nil {
+            file.Close()
+            return nil, err
+        }
+    } else {
+        if err := validateHeader(file, info.Size()); err != nil {
+            file.Close()
+            return nil, err
+        }
+    }
+
+    return &amp;Store{file: file}, nil
+}
+
+func (s *Store) Close() error {
+    return s.file.Close()
+}
+
+func encodeUser(u User) ([]byte, error) {
+    if len([]byte(u.Name)) &gt; MaxNameLen {
+        return nil, fmt.Errorf("name is longer than %d bytes", MaxNameLen)
+    }
+    if len([]byte(u.Email)) &gt; MaxEmailLen {
+        return nil, fmt.Errorf("email is longer than %d bytes", MaxEmailLen)
+    }
+
+    record := make([]byte, RecordSize)
+
+    binary.LittleEndian.PutUint64(record[0:8], uint64(u.ID))
+    if u.Deleted {
+        record[8] = 1
+    }
+    copy(record[9:41], []byte(u.Name))
+    copy(record[41:105], []byte(u.Email))
+    binary.LittleEndian.PutUint32(record[105:109], uint32(u.Age))
+
+    return record, nil
+}
+
+func decodeUser(record []byte) (User, error) {
+    if len(record) != RecordSize {
+        return User{}, fmt.Errorf("expected %d bytes, got %d", RecordSize, len(record))
+    }
+
+    return User{
+        ID:      int64(binary.LittleEndian.Uint64(record[0:8])),
+        Deleted: record[8] == 1,
+        Name:    strings.TrimRight(string(record[9:41]), "\x00"),
+        Email:   strings.TrimRight(string(record[41:105]), "\x00"),
+        Age:     int32(binary.LittleEndian.Uint32(record[105:109])),
+    }, nil
+}
+
+func (s *Store) nextID() (int64, error) {
+    info, err := s.file.Stat()
+    if err != nil {
+        return 0, err
+    }
+
+    count := (info.Size() - int64(HeaderSize)) / int64(RecordSize)
+    return count + 1, nil
+}
+
+func (s *Store) Insert(name, email string, age int32) (int64, error) {
+    id, err := s.nextID()
+    if err != nil {
+        return 0, err
+    }
+
+    record, err := encodeUser(User{
+        ID:    id,
+        Name:  name,
+        Email: email,
+        Age:   age,
+    })
+    if err != nil {
+        return 0, err
+    }
+
+    if _, err := s.file.WriteAt(record, recordOffset(id)); err != nil {
+        return 0, err
+    }
+
+    return id, nil
+}
+
+func (s *Store) Get(id int64) (User, error) {
+    if id &lt; 1 {
+        return User{}, ErrNotFound
+    }
+
+    record := make([]byte, RecordSize)
+    if _, err := s.file.ReadAt(record, recordOffset(id)); err != nil {
+        if errors.Is(err, io.EOF) {
+            return User{}, ErrNotFound
+        }
+        return User{}, err
+    }
+
+    u, err := decodeUser(record)
+    if err != nil {
+        return User{}, err
+    }
+
+    if u.Deleted {
+        return User{}, ErrDeleted
+    }
+
+    // A zero ID in an allocated-looking slot is not expected in this format.
+    if u.ID != id {
+        return User{}, fmt.Errorf("record %d is corrupt: stored id is %d", id, u.ID)
+    }
+
+    return u, nil
+}
+
+func (s *Store) Scan() ([]User, error) {
+    info, err := s.file.Stat()
+    if err != nil {
+        return nil, err
+    }
+
+    count := (info.Size() - int64(HeaderSize)) / int64(RecordSize)
+    users := make([]User, 0, count)
+
+    for id := int64(1); id &lt;= count; id++ {
+        u, err := s.Get(id)
+        if errors.Is(err, ErrDeleted) {
+            continue
+        }
+        if err != nil {
+            return nil, err
+        }
+        users = append(users, u)
+    }
+
+    return users, nil
+}
+
+func (s *Store) Delete(id int64) error {
+    if _, err := s.Get(id); err != nil {
+        return err
+    }
+
+    _, err := s.file.WriteAt([]byte{1}, recordOffset(id)+8)
+    return err
+}
+
+func printUser(u User) {
+    fmt.Printf("id=%d name=%s email=%s age=%d\n", u.ID, u.Name, u.Email, u.Age)
+}
+
+func main() {
+    if len(os.Args) != 2 {
+        fmt.Println("usage: minidb &lt;database-file&gt;")
+        os.Exit(1)
+    }
+
+    store, err := Open(os.Args[1])
+    if err != nil {
+        fmt.Println("open error:", err)
+        os.Exit(1)
+    }
+    defer store.Close()
+
+    scanner := bufio.NewScanner(os.Stdin)
+
+    for {
+        fmt.Print("minidb&gt; ")
+        if !scanner.Scan() {
+            fmt.Println()
+            break
+        }
+
+        parts := strings.Fields(scanner.Text())
+        if len(parts) == 0 {
+            continue
+        }
+
+        switch strings.ToUpper(parts[0]) {
+        case "INSERT":
+            if len(parts) != 4 {
+                fmt.Println("usage: INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+                continue
+            }
+
+            age64, err := strconv.ParseInt(parts[3], 10, 32)
+            if err != nil {
+                fmt.Println("age must be a 32-bit integer")
+                continue
+            }
+
+            id, err := store.Insert(parts[1], parts[2], int32(age64))
+            if err != nil {
+                fmt.Println("insert error:", err)
+                continue
+            }
+            fmt.Printf("inserted id=%d\n", id)
+
+        case "GET":
+            if len(parts) != 2 {
+                fmt.Println("usage: GET &lt;id&gt;")
+                continue
+            }
+
+            id, err := strconv.ParseInt(parts[1], 10, 64)
+            if err != nil {
+                fmt.Println("id must be an integer")
+                continue
+            }
+
+            u, err := store.Get(id)
+            if err != nil {
+                fmt.Println("get error:", err)
+                continue
+            }
+            printUser(u)
+
+        case "SCAN":
+            if len(parts) != 1 {
+                fmt.Println("usage: SCAN")
+                continue
+            }
+
+            users, err := store.Scan()
+            if err != nil {
+                fmt.Println("scan error:", err)
+                continue
+            }
+            for _, u := range users {
+                printUser(u)
+            }
+
+        case "DELETE":
+            if len(parts) != 2 {
+                fmt.Println("usage: DELETE &lt;id&gt;")
+                continue
+            }
+
+            id, err := strconv.ParseInt(parts[1], 10, 64)
+            if err != nil {
+                fmt.Println("id must be an integer")
+                continue
+            }
+
+            if err := store.Delete(id); err != nil {
+                fmt.Println("delete error:", err)
+                continue
+            }
+            fmt.Printf("record %d deleted\n", id)
+
+        case "EXIT", "QUIT":
+            return
+
+        case "HELP":
+            fmt.Println("INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+            fmt.Println("GET &lt;id&gt;")
+            fmt.Println("SCAN")
+            fmt.Println("DELETE &lt;id&gt;")
+            fmt.Println("EXIT")
+
+        default:
+            fmt.Println("unknown command; try HELP")
+        }
+    }
+
+    if err := scanner.Err(); err != nil {
+        fmt.Println("input error:", err)
+    }
+}</code></pre>
+<h3>Build and run the finished project</h3>
+<p>You already created <code>go.mod</code> in section 1, so there is no need to initialize the module again. Format, test compilation, build, and run:</p>
+<pre><code>gofmt -w main.go
+go build -o minidb .
+./minidb minidb.db</code></pre>
+<pre><code>minidb&gt; INSERT alice alice@example.com 30
+inserted id=1
+minidb&gt; INSERT bob bob@example.com 25
+inserted id=2
+minidb&gt; GET 1
+id=1 name=alice email=alice@example.com age=30
+minidb&gt; SCAN
+id=1 name=alice email=alice@example.com age=30
+id=2 name=bob email=bob@example.com age=25
+minidb&gt; DELETE 2
+record 2 deleted
+minidb&gt; SCAN
+id=1 name=alice email=alice@example.com age=30
+minidb&gt; EXIT</code></pre>
+<h2>18. What you should understand before Part 2</h2>
+<p>Do not measure success by whether the program compiles. Measure it by whether you can explain the path of one value.</p>
+<p>For example: Alice's age starts as an <code>int32</code> in memory. <code>encodeUser</code> converts it into four little-endian bytes and places them at positions 105–108 inside a 256-byte record. If Alice has ID 1, that record begins at file offset 128, so her age lives at file offsets 233–236. A later process opens the same file, reads 256 bytes starting at 128, takes bytes 105–108 from that record buffer, decodes them as little-endian, and reconstructs the <code>int32</code>.</p>
+<p>If you can tell that story for the ID, tombstone, name, email, and age—and if you understand why <code>GET</code> can jump directly while <code>SCAN</code> must visit every record—then Part 1 has done its job.</p>
+<div class="box insight"><strong>The path forward</strong>Part 2 should not begin with “databases use pages.” It should begin with the pains we now possess: too many tiny direct file operations, no cache policy, wasted fixed-size fields, and no structure for managing variable-size records. Pages will become a solution to problems you already recognize.</div>
+</article>
+<nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 1 of 10</span></div><div class="series-links"><a href="index.html">Series home</a><a href="part-02.html">Part 2 →</a></div></nav></body>
+</html>

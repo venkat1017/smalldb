@@ -1,0 +1,2608 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><title>MiniSQLite Part 5 — Tables, Rows, and Schemas</title><style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb;--purple:#6d4aff;--purple2:#f1edff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em}h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em}h3{font-size:1.28rem;margin:36px 0 12px}h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:840px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}.purplebox{background:var(--purple2);border-color:var(--purple)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0;white-space:pre-wrap}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:22px 0}.flowbox{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;background:#fbfcfe}.flowarrow{font-size:1.4rem;color:#64748b}.muted{color:var(--muted)}
+.rowmap{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:22px 0}.cell{border:1px solid var(--line);border-radius:8px;padding:12px 8px;text-align:center;background:#fbfcfe;font-size:.88rem}.wide{grid-column:span 2}.catalog{border:1px solid var(--line);border-radius:14px;background:#f8fafc;padding:18px 20px;margin:22px 0}.catalog .entry{border:1px solid #9aa7b8;background:white;border-radius:9px;padding:10px;margin:8px 0;font-family:Consolas,monospace;font-size:.9rem}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.flowarrow{transform:rotate(90deg)}.rowmap{grid-template-columns:1fr 1fr}h1{font-size:2.15rem}}
+</style><link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-05.html" rel="canonical"/><meta content="Move beyond one hard-coded record shape with typed schemas, row encoding, and a persistent catalog." name="description"/></head><body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 5 of 10</span></div><div class="series-links"><a href="part-04.html">← Part 4</a><a href="index.html">Series home</a><a href="part-06.html">Part 6 →</a></div></nav><article><div class="kicker">MiniSQLite · Part 5 · First-principles database engineering</div>
+<h1>Tables, Rows, and Schemas</h1>
+<p class="subtitle">Part 4 gave MiniSQLite a persistent B+tree, but the storage engine still knew only one hard-coded kind of row. Part 5 removes that assumption. We will make schemas into persistent data, teach the engine to encode rows from a schema instead of a Go <code>User</code> struct, give every table its own rowid index and data-page chain, and build a catalog that lets those tables survive a restart.</p>
+<div class="box teacher"><strong>How to use this chapter</strong>Do not begin with the complete program at the end. The important transition in Part 5 is conceptual: the storage engine stops understanding “name, email, age” and starts understanding “a schema describes columns; the row encoder obeys the schema.” Work through the byte layouts with pencil and paper, type the small pieces, run the checkpoints, inspect <code>SCHEMA</code> and <code>TABLES</code>, and only then compare your project with the finished files.</div>
+<div class="box purplebox"><strong>What Part 5 is — and is not</strong>By the end we have genuine multiple-table storage with typed schemas and a persistent catalog. We still do <em>not</em> have SQL parsing, joins, arbitrary primary keys, variable-length overflow storage, transactions, or schema migration. Those missing pieces are useful pressure for later chapters. For now, the goal is to understand what a table and a row mean <em>below</em> SQL.</div>
+<div class="toc"><h3>Table of contents</h3><ol>
+<li><a href="#setup">Project setup: preserve Part 4</a></li>
+<li><a href="#pain">The hard-coded-row problem</a></li>
+<li><a href="#relational">What “table” means to the storage engine</a></li>
+<li><a href="#schema-data">A schema is data too</a></li>
+<li><a href="#types">Choose a tiny type system</a></li>
+<li><a href="#rowid">Separate row identity from user columns</a></li>
+<li><a href="#row-layout">Design a schema-driven row layout</a></li>
+<li><a href="#nulls">Null bitmap: one bit can change a field's meaning</a></li>
+<li><a href="#text">TEXT needs a length, not just padding</a></li>
+<li><a href="#example">Derive one row by hand</a></li>
+<li><a href="#schema-code">Represent and compile schemas</a></li>
+<li><a href="#encode">Encode a row from a schema</a></li>
+<li><a href="#decode">Decode bytes back into values</a></li>
+<li><a href="#data-pages">Make data pages belong to tables</a></li>
+<li><a href="#catalog-question">Where do schemas live after restart?</a></li>
+<li><a href="#catalog-layout">Design the persistent catalog</a></li>
+<li><a href="#catalog-code">Encode table definitions into catalog slots</a></li>
+<li><a href="#open">Open a database by loading its catalog</a></li>
+<li><a href="#create">CREATE TABLE below SQL</a></li>
+<li><a href="#per-table-index">One B+tree per table</a></li>
+<li><a href="#insert">Walk one INSERT end to end</a></li>
+<li><a href="#read">GET, SCAN, and DELETE become generic</a></li>
+<li><a href="#cli">Add a tiny schema-aware CLI</a></li>
+<li><a href="#labs">Labs: two tables, two layouts</a></li>
+<li><a href="#catalog-growth">Lab: make the catalog grow</a></li>
+<li><a href="#restart">Persistence experiment</a></li>
+<li><a href="#tradeoffs">What we deliberately did not solve</a></li>
+<li><a href="#exercises">Exercises</a></li>
+<li><a href="#complete">Complete program</a></li>
+<li><a href="#understand">What you should understand</a></li>
+</ol></div><h2 id="setup">1. Project setup: preserve Part 4</h2>
+<p>Part 5 changes the database format again. Keep the Part 4 project as a working reference and make a copy. We are going to change page types, metadata, row encoding, the <code>Store</code>, and the command interface. Using a fresh database file avoids pretending that Part 4 bytes magically match the Part 5 format.</p>
+<h3><span class="step">Step 0A</span> Copy the project</h3><pre><code>cp -R minisqlite-part4 minisqlite-part5
+cd minisqlite-part5
+rm -f minidb *.db</code></pre><p>PowerShell:</p><pre><code>Copy-Item -Recurse minisqlite-part4 minisqlite-part5
+Set-Location minisqlite-part5
+Remove-Item minidb, *.db -ErrorAction SilentlyContinue</code></pre><p>Before editing anything, prove the copy still builds:</p><pre><code>gofmt -w *.go
+go build -o minidb .</code></pre><h3><span class="step">Step 0B</span> Create two new files</h3><pre><code>touch row.go catalog.go</code></pre><div class="filetree">minisqlite-part5/
+├── go.mod
+├── format.go    ← reliable page header + page types
+├── pager.go     ← cache, page allocation, flush, verification
+├── btree.go     ← reusable rowid → record-pointer index
+├── row.go       ← column types, schemas, row encoding/decoding
+├── catalog.go   ← persistent table definitions
+├── store.go     ← tables, table data pages, generic operations
+└── main.go      ← schema-aware teaching CLI</div>
+<div class="box insight"><strong>Notice what is being separated.</strong><code>row.go</code> knows how a schema turns values into bytes. <code>catalog.go</code> knows how table definitions themselves become persistent bytes. <code>btree.go</code> still knows only integer keys and record pointers. This is the same layering habit we have been building since the pager.</div><h2 id="pain">2. The hard-coded-row problem</h2>
+<p>Part 4's index was real, but the row format was still pretending the whole database contained one application struct:</p><pre><code>type User struct {
+    ID      int64
+    Deleted bool
+    Name    string
+    Email   string
+    Age     int32
+}</code></pre><p>That creates an uncomfortable question. What happens when the application wants a <code>products</code> table?</p><pre><code>products:
+    name
+    price
+    in_stock</code></pre><p>Or a <code>notes</code> table?</p><pre><code>notes:
+    title
+    body
+    archived</code></pre><p>If the storage engine has to add another Go struct and another hand-written encoder for every table, it is not acting like a database engine. It is acting like application serialization code.</p>
+<div class="box question"><strong>The Part 5 question</strong>Can the storage engine store a row even when the engine was not compiled with a Go struct for that table?</div>
+<p>The answer requires a schema. A schema describes the columns. The generic row encoder reads that description and knows how many bytes each value occupies, whether it may be null, and where it begins inside the row.</p><h2 id="relational">3. What “table” means to the storage engine</h2>
+<p>At the SQL level, a table feels like names and rows. At our current storage level, a table needs several concrete pieces of state:</p>
+<ul>
+<li>a stable table ID;</li>
+<li>a table name;</li>
+<li>a schema: ordered column definitions;</li>
+<li>a row size derived from that schema;</li>
+<li>a B+tree root for finding rows by <code>rowid</code>;</li>
+<li>a first and last data page for the table's heap pages;</li>
+<li>the next <code>rowid</code> to allocate;</li>
+<li>a location inside the catalog so those mutable fields can be persisted.</li>
+</ul>
+<div class="flow"><div class="flowbox"><strong>Table definition</strong><br/>name + schema</div><div class="flowarrow">→</div><div class="flowbox"><strong>Table storage</strong><br/>data pages</div><div class="flowarrow">→</div><div class="flowbox"><strong>Table index</strong><br/>rowid B+tree</div></div>
+<p>Part 4 had most of these ideas globally. There was one root page, one data chain, and one next ID. Part 5 moves those fields <em>into each table definition</em>.</p><h2 id="schema-data">4. A schema is data too</h2>
+<p>When you type a command such as:</p><pre><code>CREATE users name:TEXT(32) email:TEXT(64) age:INT active:BOOL</code></pre><p>the program can parse those column descriptions while it is running. But parsing them once is not enough. If we close MiniSQLite and reopen the file tomorrow, the engine must still know:</p>
+<ul><li>that column 0 is called <code>name</code>;</li><li>that it is bounded text;</li><li>that column 2 is an integer;</li><li>how large one users row is;</li><li>which B+tree belongs to users.</li></ul>
+<p>So the schema must itself be written to the database file. That persistent metadata collection is the <strong>catalog</strong>.</p>
+<div class="box insight"><strong>A database stores descriptions of its own data.</strong>This is one of the most important conceptual jumps in Part 5. User rows are data, but table names, column names, types, and index roots are also data that must survive a restart.</div><h2 id="types">5. Choose a tiny type system</h2>
+<p>A real SQL engine has a much richer type system. We want enough variety to force row encoding to become schema-driven without drowning in type semantics. Part 5 supports three types:</p>
+<table><thead><tr><th>Type</th><th>Logical value</th><th>Physical width in our row</th></tr></thead><tbody>
+<tr><td><code>INT</code></td><td>signed 64-bit integer</td><td>8 bytes</td></tr>
+<tr><td><code>BOOL</code></td><td>true / false</td><td>1 byte</td></tr>
+<tr><td><code>TEXT(n)</code></td><td>UTF-8 text up to <code>n</code> bytes</td><td>2-byte length + <code>n</code> bytes</td></tr>
+</tbody></table>
+<p>A question mark makes a column nullable:</p><pre><code>nickname:TEXT(20)?</code></pre><p>Without <code>?</code>, the column is <code>NOT NULL</code> in this teaching format. We also impose small format limits: at most 10 user columns, 32 bytes for a table name, 24 bytes for a column name, and 512 bytes for one <code>TEXT(n)</code> capacity.</p>
+<div class="box warning"><strong>These are MiniSQLite Part 5 limits, not SQL rules.</strong>They let the on-disk catalog remain fixed-size and easy to inspect. Later designs could use variable-length metadata records, overflow pages, or a system table stored using the same machinery as user tables.</div><h2 id="rowid">6. Separate row identity from user columns</h2>
+<p>Every Part 5 table gets an implicit 64-bit <code>rowid</code>. It is not one of the columns the user defines. It is the key used by that table's B+tree.</p>
+<p>Why keep it implicit? Because we want to learn table/schema storage without simultaneously designing primary-key constraints, uniqueness enforcement, composite keys, and secondary indexes.</p>
+<div class="flow"><div class="flowbox"><strong>users rowid 17</strong></div><div class="flowarrow">→</div><div class="flowbox"><strong>users B+tree</strong></div><div class="flowarrow">→</div><div class="flowbox"><strong>(page, slot)</strong></div></div>
+<p>A products row can also have <code>rowid=17</code>. That is fine because each table owns a different B+tree. The key only needs to be unique <em>inside its table</em>.</p><h2 id="row-layout">7. Design a schema-driven row layout</h2>
+<p>The old 256-byte <code>User</code> record had offsets hard-coded in Go. Part 5 replaces it with a small universal row header followed by column storage compiled from the schema.</p>
+<div class="math">byte 0        flags (bit 0 = deleted)
+bytes 1..7    reserved
+bytes 8..15   rowid
+bytes 16..17  null bitmap (enough for 10 columns)
+bytes 18..23  reserved
+byte 24...    column data, in schema order</div>
+<p>The first user column always begins at byte 24. After that, each column's width tells us where the next one begins. We round the final row size to an eight-byte boundary because it makes hex dumps and offset reasoning easier.</p>
+<div class="box teacher"><strong>Important distinction</strong>The row header is the same for every table. The column area is not. A <code>users</code> row may be 160 bytes while a <code>products</code> row is 80 bytes. The schema is what makes both decodable.</div><h2 id="nulls">8. Null bitmap: one bit can change a field's meaning</h2>
+<p>Suppose <code>nickname</code> is nullable. We could reserve a whole byte before every column to say whether it is null, but that is wasteful. With at most ten columns, two bytes give us sixteen bits—more than enough.</p>
+<div class="math">null bitmap = 0000 0000 0001 0000
+                           ↑
+                    column 4 is NULL</div>
+<p>If a column's bit is set, its value bytes are ignored. They remain zero in our encoder. This distinction matters especially for integers and booleans: the integer value <code>0</code> is not the same thing as <code>NULL</code>, and <code>false</code> is not the same thing as <code>NULL</code>.</p><h2 id="text">9. TEXT needs a length, not just padding</h2>
+<p>Part 1 copied strings into fixed byte arrays and later searched for zero padding. That works for a toy format, but now we can make the representation explicit. A <code>TEXT(32)</code> field uses:</p>
+<div class="math">2 bytes     actual UTF-8 byte length
+32 bytes    reserved text capacity
+--------------------------------
+34 bytes    total field width</div>
+<p>The text <code>alice</code> becomes length 5 followed by five UTF-8 bytes. The remaining capacity stays zero. On decode, we read exactly five bytes rather than trimming padding and hoping the result is what we meant.</p>
+<div class="box insight"><strong>Bounded text still wastes space, but its meaning is clearer.</strong>We deliberately postpone truly variable-length rows. Right now every row in one table has exactly the same size, which keeps page slot arithmetic straightforward while still letting different tables have different row sizes.</div><h2 id="example">10. Derive one users row by hand</h2>
+<p>Create this schema:</p><pre><code>CREATE users name:TEXT(32) email:TEXT(64) age:INT active:BOOL nickname:TEXT(20)?</code></pre><p>Start at row offset 24 and walk the columns:</p>
+<table><thead><tr><th>Column</th><th>Width</th><th>Offset</th><th>Why</th></tr></thead><tbody>
+<tr><td>name</td><td>34</td><td>24</td><td>2-byte length + 32 bytes</td></tr>
+<tr><td>email</td><td>66</td><td>58</td><td>24 + 34 = 58</td></tr>
+<tr><td>age</td><td>8</td><td>124</td><td>58 + 66 = 124</td></tr>
+<tr><td>active</td><td>1</td><td>132</td><td>124 + 8 = 132</td></tr>
+<tr><td>nickname</td><td>22</td><td>133</td><td>2-byte length + 20 bytes</td></tr>
+</tbody></table>
+<p>The raw end is byte 155. Round to the next multiple of eight:</p>
+<div class="math">155 → 160 bytes per users row</div>
+<p>A 4096-byte data page reserves its first 64 bytes for page/data-page metadata, leaving 4032 bytes:</p>
+<div class="math">4032 / 160 = 25 complete users rows per data page</div>
+<p>Now compare a products schema:</p><pre><code>CREATE products name:TEXT(40) price:INT in_stock:BOOL</code></pre><p>That compiles to an 80-byte row, so the same physical page can hold 50 products rows. <strong>The page size did not change. The schema changed the row size, which changed the slot capacity.</strong></p><h2 id="schema-code">11. Represent and compile schemas</h2>
+<h3><span class="step">Step 1</span> Define column metadata</h3><pre><code>type Column struct {
+    Name     string
+    Type     ColumnType
+    Nullable bool
+    MaxLen   uint16
+    Offset   uint16
+    Width    uint16
+}
+
+type Schema struct {
+    Columns []Column
+    RowSize uint32
+}</code></pre><p>Notice that a <code>Column</code> stores both logical information (<code>Name</code>, <code>Type</code>, <code>Nullable</code>) and compiled physical information (<code>Offset</code>, <code>Width</code>). <code>CompileSchema</code> is the bridge between the two.</p>
+<h3><span class="step">Step 2</span> Compute widths and offsets</h3><pre><code>func columnWidth(c Column) (uint16, error) {
+    switch c.Type {
+    case TypeInt64:
+        return 8, nil
+    case TypeBool:
+        return 1, nil
+    case TypeText:
+        return 2 + c.MaxLen, nil
+    default:
+        return 0, fmt.Errorf("unsupported column type")
+    }
+}</code></pre><pre><code>offset := RowHeaderSize
+for each column:
+    width = columnWidth(column)
+    column.Offset = offset
+    column.Width  = width
+    offset += width
+round final offset up to a multiple of 8</code></pre><div class="checkpoint"><h4>Checkpoint: predict before running</h4><p>For <code>x:INT y:BOOL z:TEXT(10)</code>, calculate the three offsets and final row size yourself. Only after you have a number should you create the table and ask <code>SCHEMA</code> to verify it.</p></div><h2 id="encode">12. Encode a row from a schema</h2>
+<p>The encoder no longer contains the words <code>name</code>, <code>email</code>, or <code>age</code>. It receives a schema and an ordered list of typed values.</p><pre><code>func EncodeRow(schema Schema, rowID int64, values []Value) ([]byte, error) {
+    buf := make([]byte, schema.RowSize)
+    binary.LittleEndian.PutUint64(buf[8:16], uint64(rowID))
+
+    for i, c := range schema.Columns {
+        v := values[i]
+
+        if v.Null {
+            setNullBit(buf, i)
+            continue
+        }
+
+        off := int(c.Offset)
+        switch c.Type {
+        case TypeInt64:
+            binary.LittleEndian.PutUint64(buf[off:off+8], uint64(v.Int))
+        case TypeBool:
+            if v.Bool { buf[off] = 1 }
+        case TypeText:
+            raw := []byte(v.Text)
+            binary.LittleEndian.PutUint16(buf[off:off+2], uint16(len(raw)))
+            copy(buf[off+2:], raw)
+        }
+    }
+    return buf, nil
+}</code></pre><p>This is the moment the engine becomes generic. The same loop can encode a users row, products row, or notes row because the decisions come from <code>c.Type</code>, <code>c.Offset</code>, and <code>c.Width</code>.</p>
+<div class="box warning"><strong>Part 5 rejects oversized text instead of silently truncating it.</strong>If a schema says <code>TEXT(20)</code> and the user provides 40 UTF-8 bytes, INSERT returns an error. Silent truncation was useful pain in Part 1; now that we have schemas, violating the schema should be visible.</div><h2 id="decode">13. Decode bytes back into values</h2>
+<p>Decoding is the mirror image. Read the row header, then walk the schema in the same order.</p><pre><code>for i, c := range schema.Columns {
+    if nullBit(buf, i) {
+        values[i] = Value{Type: c.Type, Null: true}
+        continue
+    }
+
+    off := int(c.Offset)
+    switch c.Type {
+    case TypeInt64:
+        // read 8 bytes
+    case TypeBool:
+        // read 1 byte
+    case TypeText:
+        // read uint16 length, then exactly that many bytes
+    }
+}</code></pre><p>The decoder also checks text lengths against the schema. A page checksum tells us a page has not changed unexpectedly, while schema-aware decoding tells us whether the bytes make sense <em>as this table's row format</em>.</p><h2 id="data-pages">14. Make data pages belong to tables</h2>
+<p>Part 4's data pages all belonged to the one global row format. In Part 5, a data page must declare which table owns it and which row size it uses.</p>
+<div class="math">bytes 0..31    common reliable page header
+bytes 32..39   owning table ID
+bytes 40..41   used slot count
+bytes 42..43   reserved
+bytes 44..47   row size
+bytes 48..55   next data page for this table
+bytes 56..63   reserved
+bytes 64..     rows</div>
+<p>This lets the reader validate an index pointer defensively. If the users B+tree accidentally points to a products data page, the table ID check catches the mismatch before interpreting products bytes using the users schema.</p>
+<h3><span class="step">Step 3</span> Capacity is now per table</h3><pre><code>func dataCapacity(rowSize uint32) int {
+    return (PageSize - dataRowsOffset) / int(rowSize)
+}</code></pre><p>No global <code>DataSlotsPerPage</code> constant survives. Capacity comes from the schema's compiled row size.</p><h2 id="catalog-question">15. Where do schemas live after restart?</h2>
+<p>Imagine we successfully insert rows using a runtime <code>Schema</code> object and then exit. The bytes remain on disk. On the next launch, how would MiniSQLite know that offset 124 of a users row means an integer named <code>age</code>?</p>
+<p>It cannot infer that safely from the row bytes. Many schemas could produce the same byte patterns. The definition has to be persisted explicitly.</p>
+<div class="box question"><strong>The catalog is the answer.</strong>On database open, MiniSQLite first reconstructs table definitions from catalog pages. Only after that does it know how to interpret table data pages and which B+tree root belongs to each table.</div><h2 id="catalog-layout">16. Design the persistent catalog</h2>
+<p>We add a fifth page type:</p><pre><code>PageTypeMetadata      = 1
+PageTypeData          = 2
+PageTypeBTreeLeaf     = 3
+PageTypeBTreeInternal = 4
+PageTypeCatalog       = 5</code></pre><p>Page 0 no longer stores one table's root and data pointers. Instead it stores where the catalog begins and ends, the next table ID, and the table count.</p>
+<div class="math">page 0 metadata:
+    first catalog page
+    last catalog page
+    next table ID
+    table count</div>
+<p>Catalog pages form their own linked list. To keep Part 5 inspectable, each table definition gets a fixed 512-byte catalog slot.</p>
+<div class="math">catalog page:
+    32-byte reliable page header
+    slot count
+    next catalog page
+    ...
+    7 × 512-byte table definitions</div>
+<p>Seven definitions fit because the catalog reserves its first 64 bytes for page-local metadata:</p>
+<div class="math">(4096 - 64) / 512 = 7 catalog entries per page</div>
+<div class="catalog"><strong>One 512-byte table entry stores:</strong><div class="entry">active · name · table ID · row size</div><div class="entry">B+tree root · first data page · last data page · next rowid</div><div class="entry">up to 10 compiled column descriptors</div></div>
+<p>The entry intentionally stores compiled offsets and widths <em>and</em> enough logical type information to recompute them. When the catalog is loaded, Part 5 recompiles the schema and checks that the persisted physical layout matches. That is a small consistency check against malformed metadata.</p><h2 id="catalog-code">17. Encode table definitions into catalog slots</h2>
+<h3><span class="step">Step 4</span> A table becomes an in-memory object</h3><pre><code>type Table struct {
+    ID        uint64
+    Name      string
+    Schema    Schema
+    tree      *BTree
+    firstData uint64
+    lastData  uint64
+    nextRowID int64
+    catalog   CatalogPointer
+}</code></pre><p><code>catalog</code> remembers where this table definition lives so that a later root split or data-page allocation can rewrite the same persistent entry.</p>
+<h3><span class="step">Step 5</span> Persist mutable table state</h3><pre><code>binary.LittleEndian.PutUint64(entry[rootOffset:rootOffset+8], t.tree.RootPage())
+binary.LittleEndian.PutUint64(entry[firstDataOffset:firstDataOffset+8], t.firstData)
+binary.LittleEndian.PutUint64(entry[lastDataOffset:lastDataOffset+8], t.lastData)
+binary.LittleEndian.PutUint64(entry[nextRowIDOffset:nextRowIDOffset+8], uint64(t.nextRowID))</code></pre><p>Why are these fields mutable? A B+tree can create a new root after a split. A table allocates more data pages as rows grow. Every INSERT advances <code>nextRowID</code>. The catalog is not merely a CREATE-time artifact; it is live storage metadata.</p><h2 id="open">18. Open a database by loading its catalog</h2>
+<p>A new Part 5 file starts with two pages:</p>
+<div class="filetree">page 0  metadata
+page 1  empty catalog page</div>
+<p>An existing file opens differently:</p>
+<ol>
+<li>read and validate page 0;</li>
+<li>follow the catalog-page chain;</li>
+<li>decode every occupied catalog slot;</li>
+<li>validate and compile each schema;</li>
+<li>create an in-memory <code>Table</code> object;</li>
+<li>attach a B+tree object to the persisted root page;</li>
+<li>index the table object by normalized table name.</li>
+</ol>
+<p>Crucially, MiniSQLite does <strong>not</strong> scan user rows to rediscover table structure. The catalog is authoritative.</p>
+<div class="box insight"><strong>This is why catalog corruption is serious.</strong>If row bytes survive but the schema describing them is gone, the engine may no longer know what those bytes mean. Metadata deserves the same page checksums and validation rules as ordinary data.</div><h2 id="create">19. CREATE TABLE below SQL</h2>
+<p>We still do not have a SQL parser, so our teaching command is intentionally direct:</p><pre><code>CREATE users name:TEXT(32) email:TEXT(64) age:INT active:BOOL nickname:TEXT(20)?</code></pre><p>Underneath that command, <code>CreateTable</code> performs several storage operations:</p>
+<ol>
+<li>validate the table name and check that it is unique;</li>
+<li>compile column definitions into a physical schema;</li>
+<li>allocate an empty B+tree leaf that becomes this table's root;</li>
+<li>choose the next catalog slot, allocating a new catalog page if needed;</li>
+<li>write the table definition into that slot;</li>
+<li>advance page-0 table metadata;</li>
+<li>add the table to the in-memory catalog map.</li>
+</ol>
+<p>No data page is allocated yet. An empty table needs metadata and an index root, but it does not need row storage until the first INSERT.</p>
+<div class="checkpoint"><h4>Checkpoint: create without inserting</h4><pre><code>./minidb lesson.db
+minidb&gt; CREATE users name:TEXT(32) email:TEXT(64) age:INT active:BOOL nickname:TEXT(20)?
+created table=users id=1 row_size=160 root_page=2
+
+minidb&gt; DATAPAGES users
+data_pages= []</code></pre><p>That empty data-page list is expected. Page 2 is an index leaf, not a row page.</p></div><h2 id="per-table-index">20. One B+tree per table</h2>
+<p>Part 4's B+tree implementation barely needs to change. That is a sign that the abstraction was useful. A tree still maps an integer key to a <code>RecordPointer</code>.</p>
+<p>The difference is ownership:</p>
+<div class="grid"><div class="card"><h4>users</h4><p><code>rowid 1 → (page 4, slot 0)</code><br/><code>root_page = 2</code></p></div><div class="card"><h4>products</h4><p><code>rowid 1 → (page 5, slot 0)</code><br/><code>root_page = 3</code></p></div></div>
+<p>The same key can appear in both trees because the trees belong to different tables. If the users root splits and moves from page 2 to page 14, only the users catalog entry is updated.</p>
+<div class="box teacher"><strong>Reusability lesson</strong><code>btree.go</code> never needs to know what a table's columns are. It indexes row identifiers. Schema logic lives above it; page I/O lives below it.</div><h2 id="insert">21. Walk one INSERT end to end</h2>
+<p>Suppose this table exists:</p><pre><code>users(name TEXT(32), email TEXT(64), age INT, active BOOL, nickname TEXT(20) NULL)</code></pre><p>and the user types:</p><pre><code>INSERT users alice alice@example.com 30 true NULL</code></pre><p>Follow the path slowly.</p>
+<h3><span class="step">Step 6A</span> Resolve the table</h3>
+<p>The command asks the store for <code>users</code>. That yields the schema, B+tree, next rowid, and data-page metadata.</p>
+<h3><span class="step">Step 6B</span> Parse tokens using column types</h3>
+<p><code>alice</code> becomes a TEXT value, <code>30</code> becomes an int64, <code>true</code> becomes a boolean, and <code>NULL</code> is accepted only because <code>nickname</code> is nullable.</p>
+<h3><span class="step">Step 6C</span> Encode the row</h3>
+<p>If <code>nextRowID</code> is 1, <code>EncodeRow</code> produces exactly 160 bytes. The null bit for column 4 is set.</p>
+<h3><span class="step">Step 6D</span> Find or allocate a users data page</h3>
+<p>If this is the first row, allocate a data page, stamp it with the users table ID and row size 160, and make it both first and last in the users data chain.</p>
+<h3><span class="step">Step 6E</span> Append bytes to one slot</h3>
+<p>The append operation returns a physical pointer such as <code>(page=4, slot=0)</code>.</p>
+<h3><span class="step">Step 6F</span> Insert rowid into the users B+tree</h3>
+<p>The tree stores <code>1 → (4,0)</code>. If insertion splits the root, the table object's root page changes.</p>
+<h3><span class="step">Step 6G</span> Persist the table definition</h3>
+<p>Advance <code>nextRowID</code> and rewrite the users catalog slot so restart can recover the new rowid counter, data-page pointers, and possibly new B+tree root.</p>
+<div class="box warning"><strong>There is still no transaction.</strong>If the process crashes between appending the row, updating the tree, and rewriting the catalog, the database may contain a logically partial INSERT. Checksums cannot solve that. The multi-page atomicity problem from Parts 3 and 4 is now even more obvious.</div><h2 id="read">22. GET, SCAN, and DELETE become generic</h2>
+<h3>GET</h3>
+<p><code>GET users 17</code> searches the users B+tree. The returned record pointer identifies a data page and slot. Before decoding, the store verifies:</p>
+<ul><li>the page is a data page;</li><li>its table ID equals the users table ID;</li><li>its stored row size equals the users schema row size;</li><li>the slot is within the used slot count.</li></ul>
+<p>Then <code>DecodeRow(users.Schema, bytes)</code> reconstructs generic values. There is no <code>decodeUser</code> function anymore.</p>
+<h3>SCAN</h3>
+<p><code>SCAN products</code> walks the products B+tree leaf chain, reads its record pointers, and decodes each pointer with the products schema. A users row is never involved.</p>
+<h3>DELETE</h3>
+<p>Deletion still sets the tombstone bit in the row header. The B+tree entry remains. B+tree deletion/rebalancing is still postponed, exactly as in Part 4.</p><h2 id="cli">23. Add a tiny schema-aware CLI</h2>
+<p>The point of Part 5 is storage, not parsing, so the command syntax stays deliberately simple.</p>
+<table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>CREATE table col:type ...</code></td><td>persist a new schema</td></tr>
+<tr><td><code>TABLES</code></td><td>show loaded catalog entries</td></tr>
+<tr><td><code>SCHEMA table</code></td><td>show logical types and compiled offsets</td></tr>
+<tr><td><code>INSERT table values...</code></td><td>schema-check and encode one row</td></tr>
+<tr><td><code>GET table rowid</code></td><td>B+tree lookup + schema decode</td></tr>
+<tr><td><code>SCAN table</code></td><td>iterate all live indexed rows</td></tr>
+<tr><td><code>TREE table</code></td><td>inspect that table's B+tree</td></tr>
+<tr><td><code>DATAPAGES table</code></td><td>inspect that table's heap chain</td></tr>
+<tr><td><code>CATALOGPAGES</code></td><td>inspect catalog growth</td></tr>
+</tbody></table>
+<div class="box question"><strong>Why can't TEXT contain spaces yet?</strong>Because <code>strings.Fields</code> is still our “parser.” Quoted strings, commas, parentheses, keywords, expressions, and proper SQL grammar belong to the upcoming language layer. Part 5 intentionally exposes that limitation instead of hiding a half-SQL parser inside a storage chapter.</div><h2 id="labs">24. Lab: two tables, two physical layouts</h2>
+<p>Build the project and start with a new file:</p><pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre><h3><span class="step">Lab A</span> Create users and products</h3><pre><code>minidb&gt; CREATE users name:TEXT(32) email:TEXT(64) age:INT active:BOOL nickname:TEXT(20)?
+created table=users id=1 row_size=160 root_page=2
+
+minidb&gt; CREATE products name:TEXT(40) price:INT in_stock:BOOL
+created table=products id=2 row_size=80 root_page=3</code></pre><p>Ask the engine to show what it compiled:</p><pre><code>minidb&gt; SCHEMA users
+table=users id=1 row_size=160 rows_per_page=25 root_page=2 next_rowid=1
+rowid INT (implicit key)
+0 name TEXT(32) NOT NULL offset=24 width=34
+1 email TEXT(64) NOT NULL offset=58 width=66
+2 age INT NOT NULL offset=124 width=8
+3 active BOOL NOT NULL offset=132 width=1
+4 nickname TEXT(20) NULL offset=133 width=22
+
+minidb&gt; SCHEMA products
+table=products id=2 row_size=80 rows_per_page=50 root_page=3 next_rowid=1
+rowid INT (implicit key)
+0 name TEXT(40) NOT NULL offset=24 width=42
+1 price INT NOT NULL offset=66 width=8
+2 in_stock BOOL NOT NULL offset=74 width=1</code></pre><p>This is the practical proof that “row” no longer means one global 256-byte struct.</p>
+<h3><span class="step">Lab B</span> Insert typed rows</h3><pre><code>minidb&gt; INSERT users alice alice@example.com 30 true NULL
+inserted table=users rowid=1
+
+minidb&gt; INSERT users bob bob@example.com 25 false Bobby
+inserted table=users rowid=2
+
+minidb&gt; INSERT products keyboard 99 true
+inserted table=products rowid=1
+
+minidb&gt; INSERT products mouse 25 true
+inserted table=products rowid=2</code></pre><p>Notice that both tables independently allocated rowids 1 and 2.</p>
+<h3><span class="step">Lab C</span> Read using the correct schema</h3><pre><code>minidb&gt; GET users 1
+rowid=1 name=alice email=alice@example.com age=30 active=true nickname=NULL
+
+minidb&gt; GET products 1
+rowid=1 name=keyboard price=99 in_stock=true</code></pre><p>The first key is numerically identical, but the B+tree root, record pointer, row size, and decoder schema are different.</p><h2 id="catalog-growth">25. Lab: make the catalog grow</h2>
+<p>One catalog page can hold seven table definitions. Create nine tiny tables:</p><pre><code>CREATE t1 x:INT
+CREATE t2 x:INT
+CREATE t3 x:INT
+CREATE t4 x:INT
+CREATE t5 x:INT
+CREATE t6 x:INT
+CREATE t7 x:INT
+CREATE t8 x:INT
+CREATE t9 x:INT
+CATALOGPAGES</code></pre><p>In a fresh test file, the exact physical page numbers depend on the other pages allocated for each table root, but the result will contain two catalog pages. In the tested final program:</p><pre><code>catalog_pages= [1 10]</code></pre><p>Why did page 10 become a catalog page rather than page 9? Because pages 2 through 9 were consumed by B+tree roots for the first eight tables. Page types can interleave. The catalog chain, not physical adjacency, tells us where catalog metadata continues.</p><h2 id="restart">26. Persistence experiment: prove schemas are really on disk</h2>
+<p>After creating and inserting rows, force a flush:</p><pre><code>minidb&gt; FLUSH
+dirty pages sealed, checksummed, and flushed
+
+minidb&gt; VERIFY
+verified 6 pages
+
+minidb&gt; EXIT</code></pre><p>Reopen the same file:</p><pre><code>./minidb lesson.db
+
+minidb&gt; TABLES
+id=1 name=users columns=5 row_size=160 root_page=2 next_rowid=3
+id=2 name=products columns=3 row_size=80 root_page=3 next_rowid=3
+
+minidb&gt; GET users 2
+rowid=2 name=bob email=bob@example.com age=25 active=false nickname=Bobby
+
+minidb&gt; GET products 1
+rowid=1 name=keyboard price=99 in_stock=true</code></pre><p>The interesting fact is not merely that row bytes persisted. The engine also recovered the <em>meaning</em> of those bytes: table names, column names, types, nullable flags, row sizes, B+tree roots, and next rowids. That information came from catalog pages.</p><h2 id="tradeoffs">27. What we deliberately did not solve</h2>
+<table><thead><tr><th>Limitation</th><th>Why it exists in Part 5</th><th>Likely future direction</th></tr></thead><tbody>
+<tr><td>Fixed-size row per table</td><td>Keeps slot math simple while teaching schemas</td><td>slotted pages / variable-length records / overflow pages</td></tr>
+<tr><td>Bounded <code>TEXT(n)</code></td><td>Fits the fixed row model</td><td>varlen payload or overflow storage</td></tr>
+<tr><td>Implicit integer rowid only</td><td>Avoids mixing schema storage with primary-key design</td><td>primary keys and secondary indexes</td></tr>
+<tr><td>Catalog entries fixed at 512 bytes</td><td>Easy to inspect and update in place</td><td>catalog as ordinary relational tables</td></tr>
+<tr><td>No ALTER / DROP</td><td>Schema evolution has difficult physical consequences</td><td>versioned schemas, migration, free-space reclamation</td></tr>
+<tr><td>No SQL parser</td><td>Language syntax is a separate problem</td><td>lexer, parser, AST, planner</td></tr>
+<tr><td>No transactions</td><td>Checksums detect page corruption but not partial multi-page operations</td><td>journal or WAL</td></tr>
+</tbody></table>
+<div class="box insight"><strong>A good chapter should create new discomfort.</strong>Now that schemas exist, the custom command syntax feels especially primitive. You want to write <code>CREATE TABLE</code>, <code>INSERT INTO</code>, and <code>SELECT</code>. That pressure is useful: the storage layer is finally rich enough that a language layer becomes worth building.</div><h2 id="exercises">28. Exercises</h2>
+<h3>Exercise 1 — Predict the row layout</h3>
+<p>Before running MiniSQLite, calculate the offsets, row size, and rows per page for:</p><pre><code>CREATE events code:INT title:TEXT(50) published:BOOL note:TEXT(30)?</code></pre><p>Then compare your answer with <code>SCHEMA events</code>.</p>
+<h3>Exercise 2 — Null is not zero</h3>
+<p>Create <code>measurements value:INT?</code>. Insert one row containing <code>0</code> and another containing <code>NULL</code>. Use <code>GET</code> to prove that the decoder preserves the distinction.</p>
+<h3>Exercise 3 — Reject bad values</h3>
+<p>Try putting text into an INT column, an unknown token into BOOL, NULL into a NOT NULL column, and text longer than <code>TEXT(n)</code>. Find the exact layer that rejects each input.</p>
+<h3>Exercise 4 — Cross-table pointer defense</h3>
+<p>Temporarily modify a catalog/index pointer in code so a users lookup points at a products data page. Confirm that <code>validateDataPage</code> rejects the table-ID mismatch before row decoding.</p>
+<h3>Exercise 5 — Force a B+tree root change</h3>
+<p>Insert 60 rows into one table. Because the teaching B+tree fanout is still seven, the tree will grow several index pages. Exit and reopen the database, then run <code>TREE table</code>. Verify that the catalog persisted the new root rather than the original leaf root.</p>
+<h3>Exercise 6 — Fill a data page</h3>
+<p>Create a small schema such as <code>value:INT label:TEXT(20)</code>. Use <code>SCHEMA</code> to determine rows per page, insert enough rows to exceed that number, and inspect <code>DATAPAGES</code>.</p>
+<h3>Exercise 7 — Catalog rollover</h3>
+<p>Create eight tables. Explain why a second catalog page is required and why it does not have to be physically adjacent to page 1.</p>
+<h3>Exercise 8 — Senior: catalog-as-table thought experiment</h3>
+<p>Sketch how you would represent table and column metadata using ordinary rows instead of fixed 512-byte catalog entries. What bootstrap information would still have to be known before those system tables could be read?</p><h2 id="complete">29. Complete program — only after the pieces make sense</h2>
+<div class="box teacher"><strong>Use this section as a comparison target.</strong>If you have been typing along, first make your version compile and run the labs. Then compare structure and edge cases. The important result is not identical formatting; it is that you can explain why every layer exists.</div><h3><code>go.mod</code></h3><pre><code>module minidb
+
+go 1.22
+</code></pre><h3><code>format.go</code></h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+)
+
+const (
+	PageSize          = 4096
+	PageHeaderSize    = 32
+	PageMagic         = "PG05"
+	PageHeaderVersion = uint16(1)
+	ChecksumAlgorithm = uint32(1)
+)
+
+type PageType uint8
+
+const (
+	PageTypeMetadata      PageType = 1
+	PageTypeData          PageType = 2
+	PageTypeBTreeLeaf     PageType = 3
+	PageTypeBTreeInternal PageType = 4
+	PageTypeCatalog       PageType = 5
+)
+
+func (t PageType) String() string {
+	switch t {
+	case PageTypeMetadata:
+		return "metadata"
+	case PageTypeData:
+		return "data"
+	case PageTypeBTreeLeaf:
+		return "btree-leaf"
+	case PageTypeBTreeInternal:
+		return "btree-internal"
+	case PageTypeCatalog:
+		return "catalog"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(t))
+	}
+}
+
+func validPageType(t PageType) bool {
+	return t == PageTypeMetadata || t == PageTypeData || t == PageTypeBTreeLeaf || t == PageTypeBTreeInternal || t == PageTypeCatalog
+}
+
+type PageHeaderInfo struct {
+	Type       PageType
+	Number     uint64
+	Generation uint64
+	Checksum   uint32
+}
+
+func initializePageData(data []byte, pageNum uint64, pageType PageType) error {
+	if len(data) != PageSize {
+		return fmt.Errorf("initialize page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	if !validPageType(pageType) {
+		return fmt.Errorf("initialize page: invalid page type %d", pageType)
+	}
+	clear(data)
+	copy(data[0:4], []byte(PageMagic))
+	binary.LittleEndian.PutUint16(data[4:6], PageHeaderVersion)
+	data[6] = byte(pageType)
+	binary.LittleEndian.PutUint64(data[8:16], pageNum)
+	return nil
+}
+
+func computePageChecksum(data []byte) (uint32, error) {
+	if len(data) != PageSize {
+		return 0, fmt.Errorf("checksum: expected %d bytes, got %d", PageSize, len(data))
+	}
+	h := crc32.NewIEEE()
+	_, _ = h.Write(data[:24])
+	_, _ = h.Write([]byte{0, 0, 0, 0})
+	_, _ = h.Write(data[28:])
+	return h.Sum32(), nil
+}
+
+func decodePageHeader(data []byte) PageHeaderInfo {
+	return PageHeaderInfo{
+		Type:       PageType(data[6]),
+		Number:     binary.LittleEndian.Uint64(data[8:16]),
+		Generation: binary.LittleEndian.Uint64(data[16:24]),
+		Checksum:   binary.LittleEndian.Uint32(data[24:28]),
+	}
+}
+
+func sealPageData(data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("seal page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	generation := binary.LittleEndian.Uint64(data[16:24]) + 1
+	binary.LittleEndian.PutUint64(data[16:24], generation)
+	binary.LittleEndian.PutUint32(data[24:28], 0)
+	checksum, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	binary.LittleEndian.PutUint32(data[24:28], checksum)
+	return decodePageHeader(data), nil
+}
+
+func validatePageData(expectedPageNum uint64, data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: expected %d bytes, got %d", expectedPageNum, PageSize, len(data))
+	}
+	if string(data[0:4]) != PageMagic {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: bad page magic %q", expectedPageNum, string(data[0:4]))
+	}
+	if got := binary.LittleEndian.Uint16(data[4:6]); got != PageHeaderVersion {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: unsupported page-header version %d", expectedPageNum, got)
+	}
+	info := decodePageHeader(data)
+	if !validPageType(info.Type) {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: invalid page type %d", expectedPageNum, info.Type)
+	}
+	if info.Number != expectedPageNum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: stored page number is %d", expectedPageNum, info.Number)
+	}
+	if info.Checksum == 0 {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: missing checksum", expectedPageNum)
+	}
+	computed, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if computed != info.Checksum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: checksum mismatch: stored=%08x computed=%08x", expectedPageNum, info.Checksum, computed)
+	}
+	return info, nil
+}
+</code></pre><h3><code>pager.go</code></h3><pre><code>package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
+type Page struct {
+	Number uint64
+	Type   PageType
+	Data   []byte
+	dirty  bool
+}
+
+func (p *Page) MarkDirty() { p.dirty = true }
+
+type PagerStats struct {
+	CachedPages        int
+	TotalPages         uint64
+	CacheHits          uint64
+	DiskReads          uint64
+	DiskWrites         uint64
+	ValidationFailures uint64
+}
+
+type Pager struct {
+	file               *os.File
+	pages              map[uint64]*Page
+	numPages           uint64
+	cacheHits          uint64
+	diskReads          uint64
+	diskWrites         uint64
+	validationFailures uint64
+}
+
+func OpenPager(path string) (*Pager, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if info.Size()%PageSize != 0 {
+		file.Close()
+		return nil, fmt.Errorf("database size %d is not a multiple of page size %d", info.Size(), PageSize)
+	}
+	return &amp;Pager{file: file, pages: make(map[uint64]*Page), numPages: uint64(info.Size() / PageSize)}, nil
+}
+
+func (p *Pager) GetPage(pageNum uint64) (*Page, error) {
+	if page, ok := p.pages[pageNum]; ok {
+		p.cacheHits++
+		return page, nil
+	}
+	if pageNum &gt;= p.numPages {
+		return nil, fmt.Errorf("page %d does not exist", pageNum)
+	}
+	page := &amp;Page{Number: pageNum, Data: make([]byte, PageSize)}
+	n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil &amp;&amp; err != io.EOF {
+		return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+	}
+	p.diskReads++
+	info, err := validatePageData(pageNum, page.Data)
+	if err != nil {
+		p.validationFailures++
+		return nil, err
+	}
+	page.Type = info.Type
+	p.pages[pageNum] = page
+	return page, nil
+}
+
+func (p *Pager) NewPage(pageType PageType) (*Page, error) {
+	pageNum := p.numPages
+	page := &amp;Page{Number: pageNum, Type: pageType, Data: make([]byte, PageSize), dirty: true}
+	if err := initializePageData(page.Data, pageNum, pageType); err != nil {
+		return nil, err
+	}
+	p.pages[pageNum] = page
+	p.numPages++
+	return page, nil
+}
+
+func (p *Pager) FlushPage(pageNum uint64) error {
+	page, ok := p.pages[pageNum]
+	if !ok || !page.dirty {
+		return nil
+	}
+	if _, err := sealPageData(page.Data); err != nil {
+		return err
+	}
+	n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil {
+		return fmt.Errorf("write page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return fmt.Errorf("write page %d: expected %d bytes, wrote %d", pageNum, PageSize, n)
+	}
+	page.dirty = false
+	p.diskWrites++
+	return nil
+}
+
+func (p *Pager) FlushAll() error {
+	for pageNum := range p.pages {
+		if err := p.FlushPage(pageNum); err != nil {
+			return err
+		}
+	}
+	return p.file.Sync()
+}
+
+func (p *Pager) VerifyAll() (uint64, error) {
+	if err := p.FlushAll(); err != nil {
+		return 0, err
+	}
+	buf := make([]byte, PageSize)
+	for pageNum := uint64(0); pageNum &lt; p.numPages; pageNum++ {
+		n, err := p.file.ReadAt(buf, int64(pageNum)*PageSize)
+		if err != nil &amp;&amp; err != io.EOF {
+			return pageNum, fmt.Errorf("verify page %d: %w", pageNum, err)
+		}
+		if n != PageSize {
+			return pageNum, fmt.Errorf("verify page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+		}
+		if _, err := validatePageData(pageNum, buf); err != nil {
+			p.validationFailures++
+			return pageNum, err
+		}
+	}
+	return p.numPages, nil
+}
+
+func (p *Pager) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	page, err := p.GetPage(pageNum)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if page.dirty {
+		if err := p.FlushPage(pageNum); err != nil {
+			return PageHeaderInfo{}, err
+		}
+	}
+	return validatePageData(pageNum, page.Data)
+}
+
+func (p *Pager) Stats() PagerStats {
+	return PagerStats{len(p.pages), p.numPages, p.cacheHits, p.diskReads, p.diskWrites, p.validationFailures}
+}
+
+func (p *Pager) Close() error {
+	flushErr := p.FlushAll()
+	closeErr := p.file.Close()
+	if flushErr != nil {
+		return flushErr
+	}
+	return closeErr
+}
+</code></pre><h3><code>btree.go</code></h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+// BTreeMaxKeys is intentionally tiny so a learner can trigger splits with a
+// handful of INSERTs. A production page would use far more of its 4096 bytes.
+const BTreeMaxKeys = 7
+
+const (
+	nodeKeyCountOffset = PageHeaderSize
+	nodeSpecialOffset  = 40 // leaf: next leaf; internal: first child
+	nodeEntriesOffset  = 48
+	leafEntrySize      = 24
+	internalEntrySize  = 16
+)
+
+type RecordPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type leafEntry struct {
+	Key int64
+	Ptr RecordPointer
+}
+
+type internalEntry struct {
+	Key        int64
+	RightChild uint64
+}
+
+type splitResult struct {
+	Separator int64
+	RightPage uint64
+}
+
+type BTree struct {
+	pager *Pager
+	root  uint64
+}
+
+func newBTree(pager *Pager, root uint64) *BTree { return &amp;BTree{pager: pager, root: root} }
+func (t *BTree) RootPage() uint64               { return t.root }
+
+func keyCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[nodeKeyCountOffset : nodeKeyCountOffset+2]))
+}
+
+func setKeyCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[nodeKeyCountOffset:nodeKeyCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func leafNext(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setLeafNext(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+func internalFirstChild(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setInternalFirstChild(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+
+func readLeafEntries(page *Page) []leafEntry {
+	n := keyCount(page)
+	out := make([]leafEntry, 0, n)
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*leafEntrySize
+		out = append(out, leafEntry{
+			Key: int64(binary.LittleEndian.Uint64(page.Data[off : off+8])),
+			Ptr: RecordPointer{Page: binary.LittleEndian.Uint64(page.Data[off+8 : off+16]), Slot: binary.LittleEndian.Uint16(page.Data[off+16 : off+18])},
+		})
+	}
+	return out
+}
+
+func writeLeafEntries(page *Page, entries []leafEntry) error {
+	if len(entries) &gt; BTreeMaxKeys {
+		return fmt.Errorf("leaf page %d overflow: %d keys", page.Number, len(entries))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	for i, e := range entries {
+		off := nodeEntriesOffset + i*leafEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(e.Key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], e.Ptr.Page)
+		binary.LittleEndian.PutUint16(page.Data[off+16:off+18], e.Ptr.Slot)
+	}
+	setKeyCount(page, len(entries))
+	page.MarkDirty()
+	return nil
+}
+
+func readInternal(page *Page) ([]int64, []uint64) {
+	n := keyCount(page)
+	keys := make([]int64, 0, n)
+	children := make([]uint64, 0, n+1)
+	children = append(children, internalFirstChild(page))
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*internalEntrySize
+		keys = append(keys, int64(binary.LittleEndian.Uint64(page.Data[off:off+8])))
+		children = append(children, binary.LittleEndian.Uint64(page.Data[off+8:off+16]))
+	}
+	return keys, children
+}
+
+func writeInternal(page *Page, keys []int64, children []uint64) error {
+	if len(keys) &gt; BTreeMaxKeys {
+		return fmt.Errorf("internal page %d overflow: %d keys", page.Number, len(keys))
+	}
+	if len(children) != len(keys)+1 {
+		return fmt.Errorf("internal page %d: %d keys need %d children, got %d", page.Number, len(keys), len(keys)+1, len(children))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	setInternalFirstChild(page, children[0])
+	for i, key := range keys {
+		off := nodeEntriesOffset + i*internalEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], children[i+1])
+	}
+	setKeyCount(page, len(keys))
+	page.MarkDirty()
+	return nil
+}
+
+func (t *BTree) Lookup(key int64) (RecordPointer, int, error) {
+	pageNum := t.root
+	visits := 0
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return RecordPointer{}, visits, err
+		}
+		visits++
+		switch page.Type {
+		case PageTypeBTreeLeaf:
+			entries := readLeafEntries(page)
+			lo, hi := 0, len(entries)
+			for lo &lt; hi {
+				mid := lo + (hi-lo)/2
+				if entries[mid].Key &lt; key {
+					lo = mid + 1
+				} else {
+					hi = mid
+				}
+			}
+			if lo &lt; len(entries) &amp;&amp; entries[lo].Key == key {
+				return entries[lo].Ptr, visits, nil
+			}
+			return RecordPointer{}, visits, ErrNotFound
+		case PageTypeBTreeInternal:
+			keys, children := readInternal(page)
+			childIndex := 0
+			for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+				childIndex++
+			}
+			pageNum = children[childIndex]
+		default:
+			return RecordPointer{}, visits, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+	}
+}
+
+func (t *BTree) Insert(key int64, ptr RecordPointer) error {
+	if _, _, err := t.Lookup(key); err == nil {
+		return fmt.Errorf("duplicate index key %d", key)
+	} else if err != ErrNotFound {
+		return err
+	}
+	split, err := t.insertRecursive(t.root, key, ptr)
+	if err != nil {
+		return err
+	}
+	if split == nil {
+		return nil
+	}
+	oldRoot := t.root
+	newRoot, err := t.pager.NewPage(PageTypeBTreeInternal)
+	if err != nil {
+		return err
+	}
+	if err := writeInternal(newRoot, []int64{split.Separator}, []uint64{oldRoot, split.RightPage}); err != nil {
+		return err
+	}
+	t.root = newRoot.Number
+	return nil
+}
+
+func (t *BTree) insertRecursive(pageNum uint64, key int64, ptr RecordPointer) (*splitResult, error) {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return nil, err
+	}
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		return t.insertLeaf(page, key, ptr)
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		childIndex := 0
+		for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+			childIndex++
+		}
+		childSplit, err := t.insertRecursive(children[childIndex], key, ptr)
+		if err != nil || childSplit == nil {
+			return childSplit, err
+		}
+
+		keys = append(keys, 0)
+		copy(keys[childIndex+1:], keys[childIndex:])
+		keys[childIndex] = childSplit.Separator
+		children = append(children, 0)
+		copy(children[childIndex+2:], children[childIndex+1:])
+		children[childIndex+1] = childSplit.RightPage
+
+		if len(keys) &lt;= BTreeMaxKeys {
+			return nil, writeInternal(page, keys, children)
+		}
+
+		mid := len(keys) / 2
+		promoted := keys[mid]
+		leftKeys := append([]int64(nil), keys[:mid]...)
+		leftChildren := append([]uint64(nil), children[:mid+1]...)
+		rightKeys := append([]int64(nil), keys[mid+1:]...)
+		rightChildren := append([]uint64(nil), children[mid+1:]...)
+
+		if err := writeInternal(page, leftKeys, leftChildren); err != nil {
+			return nil, err
+		}
+		right, err := t.pager.NewPage(PageTypeBTreeInternal)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeInternal(right, rightKeys, rightChildren); err != nil {
+			return nil, err
+		}
+		return &amp;splitResult{Separator: promoted, RightPage: right.Number}, nil
+	default:
+		return nil, fmt.Errorf("btree insert: page %d has type %s", page.Number, page.Type)
+	}
+}
+
+func (t *BTree) insertLeaf(page *Page, key int64, ptr RecordPointer) (*splitResult, error) {
+	entries := readLeafEntries(page)
+	pos := 0
+	for pos &lt; len(entries) &amp;&amp; entries[pos].Key &lt; key {
+		pos++
+	}
+	if pos &lt; len(entries) &amp;&amp; entries[pos].Key == key {
+		return nil, fmt.Errorf("duplicate index key %d", key)
+	}
+	entries = append(entries, leafEntry{})
+	copy(entries[pos+1:], entries[pos:])
+	entries[pos] = leafEntry{Key: key, Ptr: ptr}
+	if len(entries) &lt;= BTreeMaxKeys {
+		return nil, writeLeafEntries(page, entries)
+	}
+
+	mid := len(entries) / 2
+	leftEntries := append([]leafEntry(nil), entries[:mid]...)
+	rightEntries := append([]leafEntry(nil), entries[mid:]...)
+	oldNext := leafNext(page)
+	right, err := t.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(page, leftEntries); err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(right, rightEntries); err != nil {
+		return nil, err
+	}
+	setLeafNext(right, oldNext)
+	setLeafNext(page, right.Number)
+	return &amp;splitResult{Separator: rightEntries[0].Key, RightPage: right.Number}, nil
+}
+
+func (t *BTree) leftmostLeaf() (uint64, error) {
+	pageNum := t.root
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return 0, err
+		}
+		if page.Type == PageTypeBTreeLeaf {
+			return pageNum, nil
+		}
+		if page.Type != PageTypeBTreeInternal {
+			return 0, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+		pageNum = internalFirstChild(page)
+	}
+}
+
+func (t *BTree) AllPointers() ([]RecordPointer, error) {
+	pageNum, err := t.leftmostLeaf()
+	if err != nil {
+		return nil, err
+	}
+	var out []RecordPointer
+	for pageNum != 0 {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeBTreeLeaf {
+			return nil, fmt.Errorf("btree scan: page %d is %s", pageNum, page.Type)
+		}
+		for _, e := range readLeafEntries(page) {
+			out = append(out, e.Ptr)
+		}
+		pageNum = leafNext(page)
+	}
+	return out, nil
+}
+
+func (t *BTree) Dump() (string, error) {
+	var b strings.Builder
+	if err := t.dumpPage(&amp;b, t.root, 0); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+func (t *BTree) dumpPage(b *strings.Builder, pageNum uint64, depth int) error {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return err
+	}
+	indent := strings.Repeat("  ", depth)
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		entries := readLeafEntries(page)
+		fmt.Fprintf(b, "%sleaf page=%d keys=[", indent, pageNum)
+		for i, e := range entries {
+			if i &gt; 0 {
+				b.WriteString(" ")
+			}
+			fmt.Fprintf(b, "%d", e.Key)
+		}
+		fmt.Fprintf(b, "] next=%d\n", leafNext(page))
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		fmt.Fprintf(b, "%sinternal page=%d keys=%v children=%v\n", indent, pageNum, keys, children)
+		for _, child := range children {
+			if err := t.dumpPage(b, child, depth+1); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("tree dump: page %d has type %s", pageNum, page.Type)
+	}
+	return nil
+}
+</code></pre><h3><code>row.go</code></h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+const (
+	MaxColumns       = 10
+	MaxColumnNameLen = 24
+	MaxTextLen       = 512
+	RowHeaderSize    = 24
+)
+
+type ColumnType uint8
+
+const (
+	TypeInt64 ColumnType = 1
+	TypeText  ColumnType = 2
+	TypeBool  ColumnType = 3
+)
+
+func (t ColumnType) String() string {
+	switch t {
+	case TypeInt64:
+		return "INT"
+	case TypeText:
+		return "TEXT"
+	case TypeBool:
+		return "BOOL"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", uint8(t))
+	}
+}
+
+type Column struct {
+	Name     string
+	Type     ColumnType
+	Nullable bool
+	MaxLen   uint16
+	Offset   uint16
+	Width    uint16
+}
+
+type Schema struct {
+	Columns []Column
+	RowSize uint32
+}
+
+type Value struct {
+	Type ColumnType
+	Null bool
+	Int  int64
+	Text string
+	Bool bool
+}
+
+type Row struct {
+	RowID   int64
+	Deleted bool
+	Values  []Value
+}
+
+func columnWidth(c Column) (uint16, error) {
+	switch c.Type {
+	case TypeInt64:
+		return 8, nil
+	case TypeBool:
+		return 1, nil
+	case TypeText:
+		if c.MaxLen == 0 || c.MaxLen &gt; MaxTextLen {
+			return 0, fmt.Errorf("TEXT length must be between 1 and %d", MaxTextLen)
+		}
+		return 2 + c.MaxLen, nil
+	default:
+		return 0, fmt.Errorf("unsupported column type %d", c.Type)
+	}
+}
+
+func CompileSchema(columns []Column) (Schema, error) {
+	if len(columns) == 0 {
+		return Schema{}, fmt.Errorf("a table needs at least one column")
+	}
+	if len(columns) &gt; MaxColumns {
+		return Schema{}, fmt.Errorf("at most %d columns are supported in Part 5", MaxColumns)
+	}
+	seen := map[string]bool{}
+	compiled := make([]Column, len(columns))
+	offset := RowHeaderSize
+	for i, c := range columns {
+		if c.Name == "" || len([]byte(c.Name)) &gt; MaxColumnNameLen {
+			return Schema{}, fmt.Errorf("column %q must be 1..%d bytes", c.Name, MaxColumnNameLen)
+		}
+		key := strings.ToLower(c.Name)
+		if seen[key] {
+			return Schema{}, fmt.Errorf("duplicate column name %q", c.Name)
+		}
+		seen[key] = true
+		width, err := columnWidth(c)
+		if err != nil {
+			return Schema{}, fmt.Errorf("column %s: %w", c.Name, err)
+		}
+		if offset+int(width) &gt; 65535 {
+			return Schema{}, fmt.Errorf("row layout is too large")
+		}
+		c.Offset = uint16(offset)
+		c.Width = width
+		compiled[i] = c
+		offset += int(width)
+	}
+	// Round rows to 8 bytes so offsets are easier to inspect in a hex dump.
+	if rem := offset % 8; rem != 0 {
+		offset += 8 - rem
+	}
+	if offset &gt; PageSize-dataRowsOffset {
+		return Schema{}, fmt.Errorf("row size %d is too large to fit in one data page", offset)
+	}
+	return Schema{Columns: compiled, RowSize: uint32(offset)}, nil
+}
+
+func ParseColumnSpec(spec string) (Column, error) {
+	pair := strings.SplitN(spec, ":", 2)
+	if len(pair) != 2 || pair[0] == "" || pair[1] == "" {
+		return Column{}, fmt.Errorf("column spec %q must look like name:INT, name:BOOL, or name:TEXT(40)", spec)
+	}
+	name := pair[0]
+	typeSpec := pair[1]
+	nullable := false
+	if strings.HasSuffix(typeSpec, "?") {
+		nullable = true
+		typeSpec = strings.TrimSuffix(typeSpec, "?")
+	}
+	upper := strings.ToUpper(typeSpec)
+	c := Column{Name: name, Nullable: nullable}
+	switch {
+	case upper == "INT" || upper == "INTEGER" || upper == "INT64":
+		c.Type = TypeInt64
+	case upper == "BOOL" || upper == "BOOLEAN":
+		c.Type = TypeBool
+	case strings.HasPrefix(upper, "TEXT(") &amp;&amp; strings.HasSuffix(upper, ")"):
+		raw := upper[len("TEXT(") : len(upper)-1]
+		n, err := strconv.Atoi(raw)
+		if err != nil || n &lt; 1 || n &gt; MaxTextLen {
+			return Column{}, fmt.Errorf("TEXT length in %q must be 1..%d", spec, MaxTextLen)
+		}
+		c.Type = TypeText
+		c.MaxLen = uint16(n)
+	default:
+		return Column{}, fmt.Errorf("unsupported type %q", typeSpec)
+	}
+	return c, nil
+}
+
+func ParseValueToken(c Column, token string) (Value, error) {
+	if strings.EqualFold(token, "NULL") {
+		if !c.Nullable {
+			return Value{}, fmt.Errorf("column %s is NOT NULL", c.Name)
+		}
+		return Value{Type: c.Type, Null: true}, nil
+	}
+	v := Value{Type: c.Type}
+	switch c.Type {
+	case TypeInt64:
+		n, err := strconv.ParseInt(token, 10, 64)
+		if err != nil {
+			return Value{}, fmt.Errorf("column %s expects INT, got %q", c.Name, token)
+		}
+		v.Int = n
+	case TypeBool:
+		switch strings.ToLower(token) {
+		case "true", "1", "yes":
+			v.Bool = true
+		case "false", "0", "no":
+			v.Bool = false
+		default:
+			return Value{}, fmt.Errorf("column %s expects BOOL, got %q", c.Name, token)
+		}
+	case TypeText:
+		if len([]byte(token)) &gt; int(c.MaxLen) {
+			return Value{}, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+		}
+		v.Text = token
+	default:
+		return Value{}, fmt.Errorf("column %s has unsupported type %d", c.Name, c.Type)
+	}
+	return v, nil
+}
+
+func setNullBit(buf []byte, index int) {
+	byteIndex := 16 + index/8
+	bit := uint(index % 8)
+	buf[byteIndex] |= 1 &lt;&lt; bit
+}
+
+func nullBit(buf []byte, index int) bool {
+	byteIndex := 16 + index/8
+	bit := uint(index % 8)
+	return buf[byteIndex]&amp;(1&lt;&lt;bit) != 0
+}
+
+func EncodeRow(schema Schema, rowID int64, values []Value) ([]byte, error) {
+	if len(values) != len(schema.Columns) {
+		return nil, fmt.Errorf("expected %d values, got %d", len(schema.Columns), len(values))
+	}
+	buf := make([]byte, schema.RowSize)
+	binary.LittleEndian.PutUint64(buf[8:16], uint64(rowID))
+	for i, c := range schema.Columns {
+		v := values[i]
+		if v.Null {
+			if !c.Nullable {
+				return nil, fmt.Errorf("column %s is NOT NULL", c.Name)
+			}
+			setNullBit(buf, i)
+			continue
+		}
+		if v.Type != c.Type {
+			return nil, fmt.Errorf("column %s type mismatch", c.Name)
+		}
+		off := int(c.Offset)
+		switch c.Type {
+		case TypeInt64:
+			binary.LittleEndian.PutUint64(buf[off:off+8], uint64(v.Int))
+		case TypeBool:
+			if v.Bool {
+				buf[off] = 1
+			}
+		case TypeText:
+			raw := []byte(v.Text)
+			if len(raw) &gt; int(c.MaxLen) {
+				return nil, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+			}
+			binary.LittleEndian.PutUint16(buf[off:off+2], uint16(len(raw)))
+			copy(buf[off+2:off+2+len(raw)], raw)
+		}
+	}
+	return buf, nil
+}
+
+func DecodeRow(schema Schema, buf []byte) (Row, error) {
+	if len(buf) != int(schema.RowSize) {
+		return Row{}, fmt.Errorf("decode row: expected %d bytes, got %d", schema.RowSize, len(buf))
+	}
+	row := Row{
+		RowID:   int64(binary.LittleEndian.Uint64(buf[8:16])),
+		Deleted: buf[0]&amp;1 != 0,
+		Values:  make([]Value, len(schema.Columns)),
+	}
+	for i, c := range schema.Columns {
+		v := Value{Type: c.Type}
+		if nullBit(buf, i) {
+			v.Null = true
+			row.Values[i] = v
+			continue
+		}
+		off := int(c.Offset)
+		switch c.Type {
+		case TypeInt64:
+			v.Int = int64(binary.LittleEndian.Uint64(buf[off : off+8]))
+		case TypeBool:
+			v.Bool = buf[off] != 0
+		case TypeText:
+			n := int(binary.LittleEndian.Uint16(buf[off : off+2]))
+			if n &gt; int(c.MaxLen) {
+				return Row{}, fmt.Errorf("column %s has invalid text length %d", c.Name, n)
+			}
+			v.Text = string(buf[off+2 : off+2+n])
+		default:
+			return Row{}, fmt.Errorf("column %s has unsupported type %d", c.Name, c.Type)
+		}
+		row.Values[i] = v
+	}
+	return row, nil
+}
+
+func FormatValue(v Value) string {
+	if v.Null {
+		return "NULL"
+	}
+	switch v.Type {
+	case TypeInt64:
+		return strconv.FormatInt(v.Int, 10)
+	case TypeBool:
+		return strconv.FormatBool(v.Bool)
+	case TypeText:
+		return v.Text
+	default:
+		return "&lt;?&gt;"
+	}
+}
+</code></pre><h3><code>catalog.go</code></h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+const (
+	MaxTableNameLen = 32
+
+	catalogSlotCountOffset = PageHeaderSize
+	catalogNextPageOffset  = 40
+	catalogEntriesOffset   = 64
+	CatalogEntrySize       = 512
+	CatalogSlotsPerPage    = (PageSize - catalogEntriesOffset) / CatalogEntrySize
+
+	catalogActiveOffset    = 0
+	catalogNameLenOffset   = 1
+	catalogColumnCountOff  = 2
+	catalogRowSizeOffset   = 4
+	catalogTableIDOffset   = 8
+	catalogRootPageOffset  = 16
+	catalogFirstDataOffset = 24
+	catalogLastDataOffset  = 32
+	catalogNextRowIDOffset = 40
+	catalogNameOffset      = 48
+	catalogColumnsOffset   = 80
+
+	catalogColumnSize       = 40
+	catalogColTypeOffset    = 0
+	catalogColNullableOff   = 1
+	catalogColNameLenOffset = 2
+	catalogColMaxLenOffset  = 4
+	catalogColRowOffOffset  = 6
+	catalogColWidthOffset   = 8
+	catalogColNameOffset    = 16
+)
+
+type CatalogPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type Table struct {
+	ID        uint64
+	Name      string
+	Schema    Schema
+	tree      *BTree
+	firstData uint64
+	lastData  uint64
+	nextRowID int64
+	catalog   CatalogPointer
+}
+
+func catalogSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[catalogSlotCountOffset : catalogSlotCountOffset+2]))
+}
+
+func setCatalogSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[catalogSlotCountOffset:catalogSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func catalogNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[catalogNextPageOffset : catalogNextPageOffset+8])
+}
+
+func setCatalogNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[catalogNextPageOffset:catalogNextPageOffset+8], n)
+	page.MarkDirty()
+}
+
+func catalogEntryRange(slot int) (int, int, error) {
+	if slot &lt; 0 || slot &gt;= CatalogSlotsPerPage {
+		return 0, 0, fmt.Errorf("catalog slot %d out of range", slot)
+	}
+	start := catalogEntriesOffset + slot*CatalogEntrySize
+	return start, start + CatalogEntrySize, nil
+}
+
+func writeCatalogEntry(page *Page, slot int, t *Table) error {
+	if page.Type != PageTypeCatalog {
+		return fmt.Errorf("page %d is %s, expected catalog", page.Number, page.Type)
+	}
+	if len([]byte(t.Name)) == 0 || len([]byte(t.Name)) &gt; MaxTableNameLen {
+		return fmt.Errorf("table name must be 1..%d bytes", MaxTableNameLen)
+	}
+	if len(t.Schema.Columns) &gt; MaxColumns {
+		return fmt.Errorf("table %s has too many columns", t.Name)
+	}
+	start, end, err := catalogEntryRange(slot)
+	if err != nil {
+		return err
+	}
+	entry := page.Data[start:end]
+	clear(entry)
+	entry[catalogActiveOffset] = 1
+	entry[catalogNameLenOffset] = byte(len([]byte(t.Name)))
+	entry[catalogColumnCountOff] = byte(len(t.Schema.Columns))
+	binary.LittleEndian.PutUint32(entry[catalogRowSizeOffset:catalogRowSizeOffset+4], t.Schema.RowSize)
+	binary.LittleEndian.PutUint64(entry[catalogTableIDOffset:catalogTableIDOffset+8], t.ID)
+	binary.LittleEndian.PutUint64(entry[catalogRootPageOffset:catalogRootPageOffset+8], t.tree.RootPage())
+	binary.LittleEndian.PutUint64(entry[catalogFirstDataOffset:catalogFirstDataOffset+8], t.firstData)
+	binary.LittleEndian.PutUint64(entry[catalogLastDataOffset:catalogLastDataOffset+8], t.lastData)
+	binary.LittleEndian.PutUint64(entry[catalogNextRowIDOffset:catalogNextRowIDOffset+8], uint64(t.nextRowID))
+	copy(entry[catalogNameOffset:catalogNameOffset+MaxTableNameLen], []byte(t.Name))
+
+	for i, c := range t.Schema.Columns {
+		off := catalogColumnsOffset + i*catalogColumnSize
+		col := entry[off : off+catalogColumnSize]
+		col[catalogColTypeOffset] = byte(c.Type)
+		if c.Nullable {
+			col[catalogColNullableOff] = 1
+		}
+		col[catalogColNameLenOffset] = byte(len([]byte(c.Name)))
+		binary.LittleEndian.PutUint16(col[catalogColMaxLenOffset:catalogColMaxLenOffset+2], c.MaxLen)
+		binary.LittleEndian.PutUint16(col[catalogColRowOffOffset:catalogColRowOffOffset+2], c.Offset)
+		binary.LittleEndian.PutUint16(col[catalogColWidthOffset:catalogColWidthOffset+2], c.Width)
+		copy(col[catalogColNameOffset:catalogColNameOffset+MaxColumnNameLen], []byte(c.Name))
+	}
+	page.MarkDirty()
+	return nil
+}
+
+func readCatalogEntry(page *Page, slot int) (*Table, error) {
+	start, end, err := catalogEntryRange(slot)
+	if err != nil {
+		return nil, err
+	}
+	entry := page.Data[start:end]
+	if entry[catalogActiveOffset] == 0 {
+		return nil, nil
+	}
+	nameLen := int(entry[catalogNameLenOffset])
+	if nameLen &lt; 1 || nameLen &gt; MaxTableNameLen {
+		return nil, fmt.Errorf("catalog page %d slot %d has invalid table-name length %d", page.Number, slot, nameLen)
+	}
+	columnCount := int(entry[catalogColumnCountOff])
+	if columnCount &lt; 1 || columnCount &gt; MaxColumns {
+		return nil, fmt.Errorf("catalog page %d slot %d has invalid column count %d", page.Number, slot, columnCount)
+	}
+	name := string(entry[catalogNameOffset : catalogNameOffset+nameLen])
+	columns := make([]Column, 0, columnCount)
+	for i := 0; i &lt; columnCount; i++ {
+		off := catalogColumnsOffset + i*catalogColumnSize
+		col := entry[off : off+catalogColumnSize]
+		colNameLen := int(col[catalogColNameLenOffset])
+		if colNameLen &lt; 1 || colNameLen &gt; MaxColumnNameLen {
+			return nil, fmt.Errorf("catalog table %s column %d has invalid name length %d", name, i, colNameLen)
+		}
+		c := Column{
+			Name:     string(col[catalogColNameOffset : catalogColNameOffset+colNameLen]),
+			Type:     ColumnType(col[catalogColTypeOffset]),
+			Nullable: col[catalogColNullableOff] != 0,
+			MaxLen:   binary.LittleEndian.Uint16(col[catalogColMaxLenOffset : catalogColMaxLenOffset+2]),
+			Offset:   binary.LittleEndian.Uint16(col[catalogColRowOffOffset : catalogColRowOffOffset+2]),
+			Width:    binary.LittleEndian.Uint16(col[catalogColWidthOffset : catalogColWidthOffset+2]),
+		}
+		if _, err := columnWidth(c); err != nil {
+			return nil, fmt.Errorf("catalog table %s column %s: %w", name, c.Name, err)
+		}
+		columns = append(columns, c)
+	}
+	schema := Schema{Columns: columns, RowSize: binary.LittleEndian.Uint32(entry[catalogRowSizeOffset : catalogRowSizeOffset+4])}
+	compiled, err := CompileSchema(columns)
+	if err != nil {
+		return nil, fmt.Errorf("catalog table %s schema invalid: %w", name, err)
+	}
+	if compiled.RowSize != schema.RowSize {
+		return nil, fmt.Errorf("catalog table %s row size %d does not match compiled size %d", name, schema.RowSize, compiled.RowSize)
+	}
+	for i := range compiled.Columns {
+		if compiled.Columns[i].Offset != schema.Columns[i].Offset || compiled.Columns[i].Width != schema.Columns[i].Width {
+			return nil, fmt.Errorf("catalog table %s column %s layout mismatch", name, schema.Columns[i].Name)
+		}
+	}
+	t := &amp;Table{
+		ID:        binary.LittleEndian.Uint64(entry[catalogTableIDOffset : catalogTableIDOffset+8]),
+		Name:      name,
+		Schema:    schema,
+		firstData: binary.LittleEndian.Uint64(entry[catalogFirstDataOffset : catalogFirstDataOffset+8]),
+		lastData:  binary.LittleEndian.Uint64(entry[catalogLastDataOffset : catalogLastDataOffset+8]),
+		nextRowID: int64(binary.LittleEndian.Uint64(entry[catalogNextRowIDOffset : catalogNextRowIDOffset+8])),
+		catalog:   CatalogPointer{Page: page.Number, Slot: uint16(slot)},
+	}
+	root := binary.LittleEndian.Uint64(entry[catalogRootPageOffset : catalogRootPageOffset+8])
+	if t.ID == 0 || root == 0 || t.nextRowID &lt; 1 {
+		return nil, fmt.Errorf("catalog table %s has invalid id/root/next-rowid", name)
+	}
+	if (t.firstData == 0) != (t.lastData == 0) {
+		return nil, fmt.Errorf("catalog table %s data chain metadata disagrees", name)
+	}
+	t.tree = newBTree(nil, root) // pager is attached by Store after catalog loading.
+	return t, nil
+}
+
+func normalizeTableName(name string) string { return strings.ToLower(name) }
+</code></pre><h3><code>store.go</code></h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+const (
+	DatabaseMagic   = "MINIDB05"
+	DatabaseVersion = uint32(5)
+	HeaderPage      = uint64(0)
+
+	metaMagicOffset          = PageHeaderSize
+	metaVersionOffset        = metaMagicOffset + 8
+	metaPageSizeOffset       = metaVersionOffset + 4
+	metaPageHeaderSizeOffset = metaPageSizeOffset + 4
+	metaChecksumAlgOffset    = metaPageHeaderSizeOffset + 4
+	metaFirstCatalogOffset   = 64
+	metaLastCatalogOffset    = 72
+	metaNextTableIDOffset    = 80
+	metaTableCountOffset     = 88
+
+	dataTableIDOffset   = PageHeaderSize
+	dataSlotCountOffset = 40
+	dataRowSizeOffset   = 44
+	dataNextPageOffset  = 48
+	dataRowsOffset      = 64
+)
+
+var (
+	ErrNotFound = errors.New("record not found")
+	ErrDeleted  = errors.New("record deleted")
+)
+
+type Store struct {
+	pager            *Pager
+	tables           map[string]*Table
+	firstCatalogPage uint64
+	lastCatalogPage  uint64
+	nextTableID      uint64
+	tableCount       uint64
+}
+
+func writeDatabaseMetadata(page *Page, firstCatalog, lastCatalog, nextTableID, tableCount uint64) {
+	clear(page.Data[PageHeaderSize:])
+	copy(page.Data[metaMagicOffset:metaMagicOffset+8], []byte(DatabaseMagic))
+	binary.LittleEndian.PutUint32(page.Data[metaVersionOffset:metaVersionOffset+4], DatabaseVersion)
+	binary.LittleEndian.PutUint32(page.Data[metaPageSizeOffset:metaPageSizeOffset+4], PageSize)
+	binary.LittleEndian.PutUint32(page.Data[metaPageHeaderSizeOffset:metaPageHeaderSizeOffset+4], PageHeaderSize)
+	binary.LittleEndian.PutUint32(page.Data[metaChecksumAlgOffset:metaChecksumAlgOffset+4], ChecksumAlgorithm)
+	binary.LittleEndian.PutUint64(page.Data[metaFirstCatalogOffset:metaFirstCatalogOffset+8], firstCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaLastCatalogOffset:metaLastCatalogOffset+8], lastCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaNextTableIDOffset:metaNextTableIDOffset+8], nextTableID)
+	binary.LittleEndian.PutUint64(page.Data[metaTableCountOffset:metaTableCountOffset+8], tableCount)
+	page.MarkDirty()
+}
+
+func readDatabaseMetadata(page *Page) (firstCatalog, lastCatalog, nextTableID, tableCount uint64, err error) {
+	if page.Type != PageTypeMetadata {
+		err = fmt.Errorf("page 0 is %s, expected metadata", page.Type)
+		return
+	}
+	if string(page.Data[metaMagicOffset:metaMagicOffset+8]) != DatabaseMagic {
+		err = fmt.Errorf("not a Part 5 MiniDB file: bad database magic")
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaVersionOffset : metaVersionOffset+4]); got != DatabaseVersion {
+		err = fmt.Errorf("unsupported database version %d", got)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageSizeOffset : metaPageSizeOffset+4]); got != PageSize {
+		err = fmt.Errorf("file page size is %d, program expects %d", got, PageSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageHeaderSizeOffset : metaPageHeaderSizeOffset+4]); got != PageHeaderSize {
+		err = fmt.Errorf("file page-header size is %d, program expects %d", got, PageHeaderSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaChecksumAlgOffset : metaChecksumAlgOffset+4]); got != ChecksumAlgorithm {
+		err = fmt.Errorf("unsupported checksum algorithm %d", got)
+		return
+	}
+	firstCatalog = binary.LittleEndian.Uint64(page.Data[metaFirstCatalogOffset : metaFirstCatalogOffset+8])
+	lastCatalog = binary.LittleEndian.Uint64(page.Data[metaLastCatalogOffset : metaLastCatalogOffset+8])
+	nextTableID = binary.LittleEndian.Uint64(page.Data[metaNextTableIDOffset : metaNextTableIDOffset+8])
+	tableCount = binary.LittleEndian.Uint64(page.Data[metaTableCountOffset : metaTableCountOffset+8])
+	if firstCatalog == 0 || lastCatalog == 0 || nextTableID == 0 {
+		err = fmt.Errorf("invalid catalog metadata: first=%d last=%d nextTableID=%d", firstCatalog, lastCatalog, nextTableID)
+	}
+	return
+}
+
+func initializeCatalogPage(page *Page) error {
+	if page.Type != PageTypeCatalog {
+		return fmt.Errorf("page %d is %s, expected catalog", page.Number, page.Type)
+	}
+	setCatalogSlotCount(page, 0)
+	setCatalogNextPage(page, 0)
+	return nil
+}
+
+func Open(path string) (*Store, error) {
+	pager, err := OpenPager(path)
+	if err != nil {
+		return nil, err
+	}
+	s := &amp;Store{pager: pager, tables: make(map[string]*Table)}
+
+	if pager.numPages == 0 {
+		meta, err := pager.NewPage(PageTypeMetadata)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		if meta.Number != HeaderPage {
+			pager.Close()
+			return nil, fmt.Errorf("new metadata page is %d, expected 0", meta.Number)
+		}
+		catalog, err := pager.NewPage(PageTypeCatalog)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		if err := initializeCatalogPage(catalog); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		s.firstCatalogPage = catalog.Number
+		s.lastCatalogPage = catalog.Number
+		s.nextTableID = 1
+		s.tableCount = 0
+		writeDatabaseMetadata(meta, s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount)
+		if err := pager.FlushAll(); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		return s, nil
+	}
+
+	meta, err := pager.GetPage(HeaderPage)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	first, last, nextID, count, err := readDatabaseMetadata(meta)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount = first, last, nextID, count
+	if err := s.loadCatalog(); err != nil {
+		pager.Close()
+		return nil, err
+	}
+	if uint64(len(s.tables)) != s.tableCount {
+		pager.Close()
+		return nil, fmt.Errorf("catalog says %d tables but loaded %d", s.tableCount, len(s.tables))
+	}
+	return s, nil
+}
+
+func (s *Store) loadCatalog() error {
+	seenPages := map[uint64]bool{}
+	loadedIDs := map[uint64]bool{}
+	pageNum := s.firstCatalogPage
+	var lastSeen uint64
+	for pageNum != 0 {
+		if seenPages[pageNum] {
+			return fmt.Errorf("catalog page cycle at %d", pageNum)
+		}
+		seenPages[pageNum] = true
+		page, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return err
+		}
+		if page.Type != PageTypeCatalog {
+			return fmt.Errorf("catalog chain page %d is %s", pageNum, page.Type)
+		}
+		n := catalogSlotCount(page)
+		if n &lt; 0 || n &gt; CatalogSlotsPerPage {
+			return fmt.Errorf("catalog page %d has invalid slot count %d", pageNum, n)
+		}
+		for slot := 0; slot &lt; n; slot++ {
+			t, err := readCatalogEntry(page, slot)
+			if err != nil {
+				return err
+			}
+			if t == nil {
+				return fmt.Errorf("catalog page %d slot %d is unexpectedly empty", pageNum, slot)
+			}
+			key := normalizeTableName(t.Name)
+			if _, exists := s.tables[key]; exists {
+				return fmt.Errorf("duplicate table name %q in catalog", t.Name)
+			}
+			if loadedIDs[t.ID] {
+				return fmt.Errorf("duplicate table id %d in catalog", t.ID)
+			}
+			loadedIDs[t.ID] = true
+			t.tree.pager = s.pager
+			s.tables[key] = t
+		}
+		lastSeen = pageNum
+		pageNum = catalogNextPage(page)
+	}
+	if lastSeen != s.lastCatalogPage {
+		return fmt.Errorf("catalog last-page metadata says %d but chain ends at %d", s.lastCatalogPage, lastSeen)
+	}
+	return nil
+}
+
+func (s *Store) persistMetadata() error {
+	page, err := s.pager.GetPage(HeaderPage)
+	if err != nil {
+		return err
+	}
+	writeDatabaseMetadata(page, s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount)
+	return nil
+}
+
+func (s *Store) persistTable(t *Table) error {
+	page, err := s.pager.GetPage(t.catalog.Page)
+	if err != nil {
+		return err
+	}
+	return writeCatalogEntry(page, int(t.catalog.Slot), t)
+}
+
+func validIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if !(r == '_' || r &gt;= 'a' &amp;&amp; r &lt;= 'z' || r &gt;= 'A' &amp;&amp; r &lt;= 'Z' || i &gt; 0 &amp;&amp; r &gt;= '0' &amp;&amp; r &lt;= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) CreateTable(name string, columns []Column) (*Table, error) {
+	if !validIdentifier(name) || len([]byte(name)) &gt; MaxTableNameLen {
+		return nil, fmt.Errorf("table name must be a simple identifier of at most %d bytes", MaxTableNameLen)
+	}
+	key := normalizeTableName(name)
+	if _, exists := s.tables[key]; exists {
+		return nil, fmt.Errorf("table %q already exists", name)
+	}
+	schema, err := CompileSchema(columns)
+	if err != nil {
+		return nil, err
+	}
+	root, err := s.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	t := &amp;Table{
+		ID:        s.nextTableID,
+		Name:      name,
+		Schema:    schema,
+		tree:      newBTree(s.pager, root.Number),
+		nextRowID: 1,
+	}
+
+	catalogPage, err := s.pager.GetPage(s.lastCatalogPage)
+	if err != nil {
+		return nil, err
+	}
+	slot := catalogSlotCount(catalogPage)
+	if slot &gt;= CatalogSlotsPerPage {
+		newPage, err := s.pager.NewPage(PageTypeCatalog)
+		if err != nil {
+			return nil, err
+		}
+		if err := initializeCatalogPage(newPage); err != nil {
+			return nil, err
+		}
+		setCatalogNextPage(catalogPage, newPage.Number)
+		s.lastCatalogPage = newPage.Number
+		catalogPage = newPage
+		slot = 0
+	}
+	t.catalog = CatalogPointer{Page: catalogPage.Number, Slot: uint16(slot)}
+	if err := writeCatalogEntry(catalogPage, slot, t); err != nil {
+		return nil, err
+	}
+	setCatalogSlotCount(catalogPage, slot+1)
+
+	s.tables[key] = t
+	s.nextTableID++
+	s.tableCount++
+	if err := s.persistMetadata(); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Store) Table(name string) (*Table, error) {
+	t, ok := s.tables[normalizeTableName(name)]
+	if !ok {
+		return nil, fmt.Errorf("table %q not found", name)
+	}
+	return t, nil
+}
+
+func (s *Store) Tables() []*Table {
+	out := make([]*Table, 0, len(s.tables))
+	for _, t := range s.tables {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID &lt; out[j].ID })
+	return out
+}
+
+func dataTableID(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataTableIDOffset : dataTableIDOffset+8])
+}
+func dataSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[dataSlotCountOffset : dataSlotCountOffset+2]))
+}
+func setDataSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[dataSlotCountOffset:dataSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+func dataRowSize(page *Page) uint32 {
+	return binary.LittleEndian.Uint32(page.Data[dataRowSizeOffset : dataRowSizeOffset+4])
+}
+func dataNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataNextPageOffset : dataNextPageOffset+8])
+}
+func setDataNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[dataNextPageOffset:dataNextPageOffset+8], n)
+	page.MarkDirty()
+}
+func dataCapacity(rowSize uint32) int {
+	if rowSize == 0 {
+		return 0
+	}
+	return (PageSize - dataRowsOffset) / int(rowSize)
+}
+
+func initializeDataPage(page *Page, t *Table) error {
+	if page.Type != PageTypeData {
+		return fmt.Errorf("page %d is %s, expected data", page.Number, page.Type)
+	}
+	binary.LittleEndian.PutUint64(page.Data[dataTableIDOffset:dataTableIDOffset+8], t.ID)
+	binary.LittleEndian.PutUint32(page.Data[dataRowSizeOffset:dataRowSizeOffset+4], t.Schema.RowSize)
+	setDataSlotCount(page, 0)
+	setDataNextPage(page, 0)
+	page.MarkDirty()
+	return nil
+}
+
+func validateDataPage(page *Page, t *Table) error {
+	if page.Type != PageTypeData {
+		return fmt.Errorf("page %d is %s, expected data", page.Number, page.Type)
+	}
+	if got := dataTableID(page); got != t.ID {
+		return fmt.Errorf("data page %d belongs to table id %d, expected %d", page.Number, got, t.ID)
+	}
+	if got := dataRowSize(page); got != t.Schema.RowSize {
+		return fmt.Errorf("data page %d row size is %d, table %s expects %d", page.Number, got, t.Name, t.Schema.RowSize)
+	}
+	count := dataSlotCount(page)
+	if count &lt; 0 || count &gt; dataCapacity(t.Schema.RowSize) {
+		return fmt.Errorf("data page %d has invalid slot count %d", page.Number, count)
+	}
+	return nil
+}
+
+func (s *Store) allocateDataPage(t *Table) (*Page, error) {
+	page, err := s.pager.NewPage(PageTypeData)
+	if err != nil {
+		return nil, err
+	}
+	if err := initializeDataPage(page, t); err != nil {
+		return nil, err
+	}
+	if t.lastData != 0 {
+		last, err := s.pager.GetPage(t.lastData)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDataPage(last, t); err != nil {
+			return nil, err
+		}
+		setDataNextPage(last, page.Number)
+	} else {
+		t.firstData = page.Number
+	}
+	t.lastData = page.Number
+	return page, nil
+}
+
+func rowRange(t *Table, slot int) (int, int, error) {
+	cap := dataCapacity(t.Schema.RowSize)
+	if slot &lt; 0 || slot &gt;= cap {
+		return 0, 0, fmt.Errorf("slot %d out of range for table %s", slot, t.Name)
+	}
+	start := dataRowsOffset + slot*int(t.Schema.RowSize)
+	return start, start + int(t.Schema.RowSize), nil
+}
+
+func (s *Store) appendRow(t *Table, encoded []byte) (RecordPointer, error) {
+	if len(encoded) != int(t.Schema.RowSize) {
+		return RecordPointer{}, fmt.Errorf("encoded row has %d bytes, expected %d", len(encoded), t.Schema.RowSize)
+	}
+	var page *Page
+	var err error
+	if t.lastData == 0 {
+		page, err = s.allocateDataPage(t)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+	} else {
+		page, err = s.pager.GetPage(t.lastData)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+		if err := validateDataPage(page, t); err != nil {
+			return RecordPointer{}, err
+		}
+		if dataSlotCount(page) &gt;= dataCapacity(t.Schema.RowSize) {
+			page, err = s.allocateDataPage(t)
+			if err != nil {
+				return RecordPointer{}, err
+			}
+		}
+	}
+	slot := dataSlotCount(page)
+	start, end, err := rowRange(t, slot)
+	if err != nil {
+		return RecordPointer{}, err
+	}
+	copy(page.Data[start:end], encoded)
+	setDataSlotCount(page, slot+1)
+	page.MarkDirty()
+	return RecordPointer{Page: page.Number, Slot: uint16(slot)}, nil
+}
+
+func (s *Store) readRowAt(t *Table, ptr RecordPointer) (Row, *Page, int, error) {
+	page, err := s.pager.GetPage(ptr.Page)
+	if err != nil {
+		return Row{}, nil, 0, err
+	}
+	if err := validateDataPage(page, t); err != nil {
+		return Row{}, nil, 0, err
+	}
+	if int(ptr.Slot) &gt;= dataSlotCount(page) {
+		return Row{}, nil, 0, fmt.Errorf("pointer %d:%d is past used slots", ptr.Page, ptr.Slot)
+	}
+	start, end, err := rowRange(t, int(ptr.Slot))
+	if err != nil {
+		return Row{}, nil, 0, err
+	}
+	row, err := DecodeRow(t.Schema, page.Data[start:end])
+	return row, page, start, err
+}
+
+func (s *Store) Insert(tableName string, values []Value) (int64, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return 0, err
+	}
+	rowID := t.nextRowID
+	encoded, err := EncodeRow(t.Schema, rowID, values)
+	if err != nil {
+		return 0, err
+	}
+	ptr, err := s.appendRow(t, encoded)
+	if err != nil {
+		return 0, err
+	}
+	if err := t.tree.Insert(rowID, ptr); err != nil {
+		return 0, err
+	}
+	t.nextRowID++
+	if err := s.persistTable(t); err != nil {
+		return 0, err
+	}
+	return rowID, nil
+}
+
+func (s *Store) Get(tableName string, rowID int64) (Row, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return Row{}, err
+	}
+	ptr, _, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return Row{}, err
+	}
+	row, _, _, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return Row{}, err
+	}
+	if row.RowID != rowID {
+		return Row{}, fmt.Errorf("index key %d points to rowid %d", rowID, row.RowID)
+	}
+	if row.Deleted {
+		return Row{}, ErrDeleted
+	}
+	return row, nil
+}
+
+func (s *Store) GetWithSteps(tableName string, rowID int64) (Row, int, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return Row{}, 0, err
+	}
+	ptr, steps, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return Row{}, steps, err
+	}
+	row, _, _, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return Row{}, steps, err
+	}
+	if row.RowID != rowID {
+		return Row{}, steps, fmt.Errorf("index key %d points to rowid %d", rowID, row.RowID)
+	}
+	if row.Deleted {
+		return Row{}, steps, ErrDeleted
+	}
+	return row, steps, nil
+}
+
+func (s *Store) Scan(tableName string) ([]Row, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	ptrs, err := t.tree.AllPointers()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]Row, 0, len(ptrs))
+	for _, ptr := range ptrs {
+		row, _, _, err := s.readRowAt(t, ptr)
+		if err != nil {
+			return nil, err
+		}
+		if row.Deleted {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func (s *Store) Delete(tableName string, rowID int64) error {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return err
+	}
+	ptr, _, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return err
+	}
+	row, page, start, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return err
+	}
+	if row.Deleted {
+		return ErrDeleted
+	}
+	page.Data[start] |= 1
+	page.MarkDirty()
+	return nil
+}
+
+func (s *Store) TreeDump(tableName string) (string, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return "", err
+	}
+	return t.tree.Dump()
+}
+
+func (s *Store) DataChain(tableName string) ([]uint64, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := t.firstData; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("data-page cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDataPage(page, t); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+		p = dataNextPage(page)
+	}
+	if len(out) == 0 &amp;&amp; t.lastData != 0 {
+		return nil, fmt.Errorf("table %s has last data page but empty chain", t.Name)
+	}
+	if len(out) &gt; 0 &amp;&amp; out[len(out)-1] != t.lastData {
+		return nil, fmt.Errorf("table %s last data metadata says %d but chain ends at %d", t.Name, t.lastData, out[len(out)-1])
+	}
+	return out, nil
+}
+
+func (s *Store) CatalogPages() ([]uint64, error) {
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := s.firstCatalogPage; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("catalog cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeCatalog {
+			return nil, fmt.Errorf("catalog chain page %d is %s", p, page.Type)
+		}
+		out = append(out, p)
+		p = catalogNextPage(page)
+	}
+	return out, nil
+}
+
+func (s *Store) Stats() PagerStats { return s.pager.Stats() }
+func (s *Store) Flush() error      { return s.pager.FlushAll() }
+func (s *Store) Verify() (uint64, error) {
+	return s.pager.VerifyAll()
+}
+func (s *Store) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	return s.pager.PageInfo(pageNum)
+}
+func (s *Store) Close() error { return s.pager.Close() }
+
+func describeColumn(c Column) string {
+	typ := c.Type.String()
+	if c.Type == TypeText {
+		typ = fmt.Sprintf("TEXT(%d)", c.MaxLen)
+	}
+	nullability := "NOT NULL"
+	if c.Nullable {
+		nullability = "NULL"
+	}
+	return fmt.Sprintf("%s %s %s offset=%d width=%d", c.Name, typ, nullability, c.Offset, c.Width)
+}
+
+func (s *Store) DescribeTable(name string) (string, error) {
+	t, err := s.Table(name)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&amp;b, "table=%s id=%d row_size=%d rows_per_page=%d root_page=%d next_rowid=%d\n", t.Name, t.ID, t.Schema.RowSize, dataCapacity(t.Schema.RowSize), t.tree.RootPage(), t.nextRowID)
+	b.WriteString("rowid INT (implicit key)\n")
+	for i, c := range t.Schema.Columns {
+		fmt.Fprintf(&amp;b, "%d %s\n", i, describeColumn(c))
+	}
+	return b.String(), nil
+}
+</code></pre><h3><code>main.go</code></h3><pre><code>package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+func printRow(t *Table, row Row) {
+	fmt.Printf("rowid=%d", row.RowID)
+	for i, c := range t.Schema.Columns {
+		fmt.Printf(" %s=%s", c.Name, FormatValue(row.Values[i]))
+	}
+	fmt.Println()
+}
+
+func parseValues(t *Table, tokens []string) ([]Value, error) {
+	if len(tokens) != len(t.Schema.Columns) {
+		return nil, fmt.Errorf("table %s expects %d values, got %d", t.Name, len(t.Schema.Columns), len(tokens))
+	}
+	values := make([]Value, len(tokens))
+	for i, token := range tokens {
+		v, err := ParseValueToken(t.Schema.Columns[i], token)
+		if err != nil {
+			return nil, err
+		}
+		values[i] = v
+	}
+	return values, nil
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("usage: minidb &lt;database-file&gt;")
+		os.Exit(1)
+	}
+	store, err := Open(os.Args[1])
+	if err != nil {
+		fmt.Println("open error:", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minidb&gt; ")
+		if !scanner.Scan() {
+			fmt.Println()
+			break
+		}
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch strings.ToUpper(parts[0]) {
+		case "CREATE":
+			if len(parts) &lt; 3 {
+				fmt.Println("usage: CREATE &lt;table&gt; &lt;name:TYPE&gt; [name:TYPE ...]")
+				continue
+			}
+			columns := make([]Column, 0, len(parts)-2)
+			failed := false
+			for _, spec := range parts[2:] {
+				c, err := ParseColumnSpec(spec)
+				if err != nil {
+					fmt.Println("create error:", err)
+					failed = true
+					break
+				}
+				columns = append(columns, c)
+			}
+			if failed {
+				continue
+			}
+			t, err := store.CreateTable(parts[1], columns)
+			if err != nil {
+				fmt.Println("create error:", err)
+				continue
+			}
+			fmt.Printf("created table=%s id=%d row_size=%d root_page=%d\n", t.Name, t.ID, t.Schema.RowSize, t.tree.RootPage())
+
+		case "TABLES":
+			tables := store.Tables()
+			if len(tables) == 0 {
+				fmt.Println("(no tables)")
+				continue
+			}
+			for _, t := range tables {
+				fmt.Printf("id=%d name=%s columns=%d row_size=%d root_page=%d next_rowid=%d\n", t.ID, t.Name, len(t.Schema.Columns), t.Schema.RowSize, t.tree.RootPage(), t.nextRowID)
+			}
+
+		case "SCHEMA":
+			if len(parts) != 2 {
+				fmt.Println("usage: SCHEMA &lt;table&gt;")
+				continue
+			}
+			text, err := store.DescribeTable(parts[1])
+			if err != nil {
+				fmt.Println("schema error:", err)
+				continue
+			}
+			fmt.Print(text)
+
+		case "INSERT":
+			if len(parts) &lt; 3 {
+				fmt.Println("usage: INSERT &lt;table&gt; &lt;value&gt; [value ...]")
+				continue
+			}
+			t, err := store.Table(parts[1])
+			if err != nil {
+				fmt.Println("insert error:", err)
+				continue
+			}
+			values, err := parseValues(t, parts[2:])
+			if err != nil {
+				fmt.Println("insert error:", err)
+				continue
+			}
+			rowID, err := store.Insert(t.Name, values)
+			if err != nil {
+				fmt.Println("insert error:", err)
+				continue
+			}
+			fmt.Printf("inserted table=%s rowid=%d\n", t.Name, rowID)
+
+		case "GET":
+			if len(parts) != 3 {
+				fmt.Println("usage: GET &lt;table&gt; &lt;rowid&gt;")
+				continue
+			}
+			rowID, err := strconv.ParseInt(parts[2], 10, 64)
+			if err != nil {
+				fmt.Println("rowid must be an integer")
+				continue
+			}
+			t, err := store.Table(parts[1])
+			if err != nil {
+				fmt.Println("get error:", err)
+				continue
+			}
+			row, err := store.Get(t.Name, rowID)
+			if err != nil {
+				fmt.Println("get error:", err)
+				continue
+			}
+			printRow(t, row)
+
+		case "TRACEGET":
+			if len(parts) != 3 {
+				fmt.Println("usage: TRACEGET &lt;table&gt; &lt;rowid&gt;")
+				continue
+			}
+			rowID, err := strconv.ParseInt(parts[2], 10, 64)
+			if err != nil {
+				fmt.Println("rowid must be an integer")
+				continue
+			}
+			t, err := store.Table(parts[1])
+			if err != nil {
+				fmt.Println("get error:", err)
+				continue
+			}
+			row, steps, err := store.GetWithSteps(t.Name, rowID)
+			if err != nil {
+				fmt.Printf("get error after %d index pages: %v\n", steps, err)
+				continue
+			}
+			printRow(t, row)
+			fmt.Printf("index_pages_visited=%d\n", steps)
+
+		case "SCAN":
+			if len(parts) != 2 {
+				fmt.Println("usage: SCAN &lt;table&gt;")
+				continue
+			}
+			t, err := store.Table(parts[1])
+			if err != nil {
+				fmt.Println("scan error:", err)
+				continue
+			}
+			rows, err := store.Scan(t.Name)
+			if err != nil {
+				fmt.Println("scan error:", err)
+				continue
+			}
+			for _, row := range rows {
+				printRow(t, row)
+			}
+
+		case "DELETE":
+			if len(parts) != 3 {
+				fmt.Println("usage: DELETE &lt;table&gt; &lt;rowid&gt;")
+				continue
+			}
+			rowID, err := strconv.ParseInt(parts[2], 10, 64)
+			if err != nil {
+				fmt.Println("rowid must be an integer")
+				continue
+			}
+			if err := store.Delete(parts[1], rowID); err != nil {
+				fmt.Println("delete error:", err)
+				continue
+			}
+			fmt.Printf("deleted table=%s rowid=%d\n", parts[1], rowID)
+
+		case "TREE":
+			if len(parts) != 2 {
+				fmt.Println("usage: TREE &lt;table&gt;")
+				continue
+			}
+			dump, err := store.TreeDump(parts[1])
+			if err != nil {
+				fmt.Println("tree error:", err)
+				continue
+			}
+			fmt.Print(dump)
+
+		case "DATAPAGES":
+			if len(parts) != 2 {
+				fmt.Println("usage: DATAPAGES &lt;table&gt;")
+				continue
+			}
+			pages, err := store.DataChain(parts[1])
+			if err != nil {
+				fmt.Println("data pages error:", err)
+				continue
+			}
+			fmt.Println("data_pages=", pages)
+
+		case "CATALOGPAGES":
+			pages, err := store.CatalogPages()
+			if err != nil {
+				fmt.Println("catalog pages error:", err)
+				continue
+			}
+			fmt.Println("catalog_pages=", pages)
+
+		case "STATS":
+			st := store.Stats()
+			fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d validation_failures=%d\n", st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites, st.ValidationFailures)
+
+		case "FLUSH":
+			if err := store.Flush(); err != nil {
+				fmt.Println("flush error:", err)
+				continue
+			}
+			fmt.Println("dirty pages sealed, checksummed, and flushed")
+
+		case "VERIFY":
+			pages, err := store.Verify()
+			if err != nil {
+				fmt.Println("verify error:", err)
+				continue
+			}
+			fmt.Printf("verified %d pages\n", pages)
+
+		case "PAGEINFO":
+			if len(parts) != 2 {
+				fmt.Println("usage: PAGEINFO &lt;page-number&gt;")
+				continue
+			}
+			pageNum, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("page number must be a non-negative integer")
+				continue
+			}
+			info, err := store.PageInfo(pageNum)
+			if err != nil {
+				fmt.Println("pageinfo error:", err)
+				continue
+			}
+			fmt.Printf("page=%d type=%s generation=%d checksum=%08x\n", info.Number, info.Type, info.Generation, info.Checksum)
+
+		case "HELP":
+			fmt.Println("CREATE &lt;table&gt; &lt;name:INT|BOOL|TEXT(n)&gt; [column ...]")
+			fmt.Println("  append ? to a type to make it nullable, e.g. nickname:TEXT(20)?")
+			fmt.Println("TABLES")
+			fmt.Println("SCHEMA &lt;table&gt;")
+			fmt.Println("INSERT &lt;table&gt; &lt;value&gt; [value ...]")
+			fmt.Println("  use NULL for a nullable value")
+			fmt.Println("GET &lt;table&gt; &lt;rowid&gt;")
+			fmt.Println("TRACEGET &lt;table&gt; &lt;rowid&gt;")
+			fmt.Println("SCAN &lt;table&gt;")
+			fmt.Println("DELETE &lt;table&gt; &lt;rowid&gt;")
+			fmt.Println("TREE &lt;table&gt;")
+			fmt.Println("DATAPAGES &lt;table&gt;")
+			fmt.Println("CATALOGPAGES")
+			fmt.Println("STATS")
+			fmt.Println("FLUSH")
+			fmt.Println("VERIFY")
+			fmt.Println("PAGEINFO &lt;page-number&gt;")
+			fmt.Println("EXIT")
+
+		case "EXIT", "QUIT":
+			return
+		default:
+			fmt.Println("unknown command; try HELP")
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("input error:", err)
+	}
+}
+</code></pre><h3>Build and smoke-test the finished project</h3><pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre><p>A compact end-to-end session:</p><pre><code>minidb&gt; CREATE users name:TEXT(32) email:TEXT(64) age:INT active:BOOL nickname:TEXT(20)?
+created table=users id=1 row_size=160 root_page=2
+
+minidb&gt; CREATE products name:TEXT(40) price:INT in_stock:BOOL
+created table=products id=2 row_size=80 root_page=3
+
+minidb&gt; INSERT users alice alice@example.com 30 true NULL
+inserted table=users rowid=1
+
+minidb&gt; INSERT users bob bob@example.com 25 false Bobby
+inserted table=users rowid=2
+
+minidb&gt; INSERT products keyboard 99 true
+inserted table=products rowid=1
+
+minidb&gt; GET users 2
+rowid=2 name=bob email=bob@example.com age=25 active=false nickname=Bobby
+
+minidb&gt; GET products 1
+rowid=1 name=keyboard price=99 in_stock=true
+
+minidb&gt; CATALOGPAGES
+catalog_pages= [1]
+
+minidb&gt; FLUSH
+dirty pages sealed, checksummed, and flushed
+
+minidb&gt; VERIFY
+verified 6 pages</code></pre><h2 id="understand">30. What you should understand before leaving Part 5</h2>
+<p>Imagine MiniSQLite opens an existing Part 5 file. Page 0 passes its page-header checksum and database-metadata validation. Page 0 says the catalog starts at page 1. The store follows catalog pages and finds a table definition named <code>users</code>. That definition says users has five columns, a 160-byte row size, B+tree root page 14, first data page 4, last data page 22, and next rowid 61.</p>
+<p>The catalog also describes every users column. MiniSQLite recompiles the schema: name begins at 24 with width 34; email begins at 58 with width 66; age begins at 124 with width 8; active begins at 132 with width 1; nullable nickname begins at 133 with width 22. The recomputed row size is 160, matching the catalog. Only now is the storage engine prepared to interpret users row bytes.</p>
+<p>The products catalog entry may describe a completely different 80-byte row and a completely different B+tree root. There is no global “current record format.” Every table carries the information required to interpret its own pages.</p>
+<p>Now the user asks for <code>GET users 30</code>. The store finds the users <code>Table</code> object and searches only the users B+tree. The leaf returns a record pointer. The pointed page must identify itself as a data page owned by the users table ID and using row size 160. The slot bytes are passed to <code>DecodeRow(users.Schema, ...)</code>. The decoder checks the null bitmap and uses column offsets/types to reconstruct generic values.</p>
+<p>If the user asks for <code>GET products 30</code>, the entire path starts from a different table object. Same numeric rowid, different tree, different heap, different schema. That is the storage-level meaning of having multiple tables.</p>
+<p>When an INSERT changes a table's B+tree root, data-page tail, or next rowid, the corresponding catalog entry must change too. The catalog is therefore part of the live database state, not documentation sitting beside the real data.</p>
+<p>You should also be able to explain why our catalog format is still intentionally crude. Fixed 512-byte entries and at most ten columns make the chapter understandable, but they are another instance of the same pattern we have followed throughout MiniSQLite: choose a simple representation, feel its limits, then let those limits motivate the next design.</p>
+<div class="box insight"><strong>If this feels mechanical rather than magical, Part 5 worked.</strong>A table is no longer a Go struct. It is persisted metadata plus a schema-driven row format plus a data-page chain plus an index. A row is no longer “the User layout.” It is bytes whose meaning comes from the table's schema.</div>
+<h3>The pain that should now bother you</h3>
+<p>We can finally store relational-looking data, but interacting with it is awkward. <code>CREATE users name:TEXT(32)...</code> and <code>GET users 3</code> are storage-engine commands, not a query language. We cannot write predicates, projections, expressions, joins, or even quoted text with spaces. The natural next pressure is to build a real language layer that can turn SQL text into structured operations over the tables and schemas we now persist.</p>
+<div style="margin-top:52px;padding:28px;background:#f8fafc;border:1px solid var(--line);border-radius:14px;text-align:center"><strong style="font-size:1.15rem">Part 5 complete</strong><p style="margin-bottom:0;color:var(--muted)">You started with one hard-coded User layout. You ended with multiple persistent tables, compiled schemas, typed and nullable row encoding, per-table heap pages, one B+tree per table, and a catalog that reconstructs the database's own structure after restart.</p></div></article><nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 5 of 10</span></div><div class="series-links"><a href="part-04.html">← Part 4</a><a href="index.html">Series home</a><a href="part-06.html">Part 6 →</a></div></nav></body></html>

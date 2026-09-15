@@ -1,0 +1,3076 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><title>MiniSQLite Part 6 — SQL Parsing</title><style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb;--purple:#6d4aff;--purple2:#f1edff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em}h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em}h3{font-size:1.28rem;margin:36px 0 12px}h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:840px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}.purplebox{background:var(--purple2);border-color:var(--purple)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0;white-space:pre-wrap}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:22px 0}.flowbox{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;background:#fbfcfe}.flowarrow{font-size:1.4rem;color:#64748b}.muted{color:var(--muted)}
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:22px 0}.pipe{border:1px solid var(--line);background:#fbfcfe;border-radius:10px;padding:14px;text-align:center}.pipe b{display:block;color:var(--blue)}
+.grammar{background:#f7f9fc;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:18px 0;font-family:"SFMono-Regular",Consolas,monospace;white-space:pre-wrap;font-size:.9rem}
+.token{display:inline-block;border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 8px;margin:4px;font-family:Consolas,monospace;font-size:.86rem}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}.flow,.pipeline{grid-template-columns:1fr}.flowarrow{transform:rotate(90deg)}h1{font-size:2.15rem}}
+</style><link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-06.html" rel="canonical"/><meta content="Turn SQL text into tokens and an AST using a lexer and recursive-descent parser." name="description"/></head><body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 6 of 10</span></div><div class="series-links"><a href="part-05.html">← Part 5</a><a href="index.html">Series home</a><a href="part-07.html">Part 7 →</a></div></nav><article><div class="kicker">MiniSQLite • Part 6</div><h1>SQL Parsing</h1><p class="subtitle">Custom commands got us this far. Now we build the front door of a relational database: a lexer, a recursive-descent parser, an abstract syntax tree, and a thin execution bridge into the tables, schemas, B+trees, pages, checksums, and catalog we already built.</p><div class="box teacher"><strong>How to use this chapter</strong><p>Do not jump to the final source listing. Type the small pieces in order. At each checkpoint, run the program and inspect what changed. The goal is not to memorize parser code. The goal is to be able to explain what happens to the characters in <code>SELECT name FROM users WHERE rowid = 2;</code> before a single data page is touched.</p></div><div class="toc"><strong>Table of contents</strong><ol><li><a href="#s1">1. Project setup: preserve Part 5</a></li><li><a href="#s2">2. The problem: our commands are not SQL</a></li><li><a href="#s3">3. The SQL pipeline: text is not execution</a></li><li><a href="#s4">4. Choose a small SQL language before writing code</a></li><li><a href="#s5">5. Lexing: turn characters into tokens</a></li><li><a href="#s6">6. Keywords and identifiers are not the same thing</a></li><li><a href="#s7">7. String literals are where naive splitting breaks</a></li><li><a href="#s8">8. Build the lexer one token at a time</a></li><li><a href="#s9">9. Checkpoint: inspect a SELECT as tokens</a></li><li><a href="#s10">10. Why tokens still are not enough</a></li><li><a href="#s11">11. Write the grammar before the parser</a></li><li><a href="#s12">12. AST: represent meaning, not punctuation</a></li><li><a href="#s13">13. Recursive descent: one grammar rule, one function</a></li><li><a href="#s14">14. Parse CREATE TABLE</a></li><li><a href="#s15">15. SQL nullability changes one Part 5 assumption</a></li><li><a href="#s16">16. Parse INSERT INTO ... VALUES</a></li><li><a href="#s17">17. Parse SELECT projections and FROM</a></li><li><a href="#s18">18. Parse WHERE as an expression tree</a></li><li><a href="#s19">19. Parse DELETE safely</a></li><li><a href="#s20">20. Good parser errors are part of the design</a></li><li><a href="#s21">21. Checkpoint: print the AST</a></li><li><a href="#s22">22. Execution is a separate layer</a></li><li><a href="#s23">23. Execute CREATE TABLE through the Part 5 catalog</a></li><li><a href="#s24">24. Execute INSERT with typed literals</a></li><li><a href="#s25">25. Execute SELECT: scan or indexed rowid lookup</a></li><li><a href="#s26">26. Projection: SELECT * is not the same as SELECT name</a></li><li><a href="#s27">27. Execute DELETE through a rowid predicate</a></li><li><a href="#s28">28. SQL commands vs database meta commands</a></li><li><a href="#s29">29. Replace strings.Fields with a raw-line REPL</a></li><li><a href="#s30">30. Lab: quoted text, spaces, apostrophes, and NULL</a></li><li><a href="#s31">31. Lab: parser success can still mean executor rejection</a></li><li><a href="#s32">32. Compatibility experiment: open a Part 5 database</a></li><li><a href="#s33">33. What we deliberately did not solve</a></li><li><a href="#s34">34. Exercises</a></li><li><a href="#s35">35. Complete program — only after the pieces make sense</a></li><li><a href="#s36">36. What you should understand before leaving Part 6</a></li></ol></div><div class="box insight"><strong>The Part 6 promise</strong><p>By the end, the storage engine from Part 5 will accept a real, intentionally small SQL subset. More importantly, you will be able to draw the boundary between <strong>lexing</strong>, <strong>parsing</strong>, <strong>AST construction</strong>, <strong>semantic/execution checks</strong>, and <strong>storage access</strong>.</p></div><h2 id="s1">1. Project setup: preserve Part 5</h2><p>Part 5 ended with real tables and persistent schemas. That was the right place to stop because SQL should sit <em>above</em> those storage concepts, not replace them. We therefore begin Part 6 by copying the working Part 5 project. We are changing the language layer, not throwing away the pager, catalog, B+tree, row encoder, or checksum logic.</p><h3>Step 0A — copy the project</h3><pre><code>cp -R minisqlite-part5 minisqlite-part6
+cd minisqlite-part6
+rm -f minidb *.db</code></pre><p>On PowerShell:</p><pre><code>Copy-Item -Recurse minisqlite-part5 minisqlite-part6
+Set-Location minisqlite-part6
+Remove-Item minidb, *.db -ErrorAction SilentlyContinue</code></pre><h3>Step 0B — create the three language-layer files</h3><pre><code>touch lexer.go parser.go sql.go</code></pre><div class="filetree">minisqlite-part6/
+├── go.mod
+├── format.go       ← unchanged storage page format
+├── pager.go        ← unchanged pager/cache
+├── btree.go        ← unchanged persistent B+tree
+├── row.go          ← schemas + row encoding
+├── catalog.go      ← persistent table catalog
+├── store.go        ← storage API
+├── lexer.go        ← NEW: characters → tokens
+├── parser.go       ← NEW: tokens → AST
+├── sql.go          ← NEW: AST → Store calls
+└── main.go         ← REPL now accepts SQL</div><p>Before changing anything, prove the copied project still builds:</p><pre><code>gofmt -w *.go
+go build -o minidb .</code></pre><div class="box insight"><strong>No file-format version bump</strong><p>The physical bytes on disk do not change in Part 6. A parser is a front-end feature. So we deliberately keep the Part 5 database magic and version. A Part 6 binary can open a Part 5 database because its pager, page headers, catalog entries, rows, and B+tree pages are still encoded exactly the same way.</p></div><h2 id="s2">2. The problem: our commands are not SQL</h2><p>Our Part 5 shell was useful for learning storage, but it invented commands such as:</p><pre><code>CREATE users name:TEXT(32) email:TEXT(64) age:INT
+INSERT users alice alice@example.com 30
+GET users 1
+SCAN users</code></pre><p>Those commands are not SQL. More importantly, the implementation used <code>strings.Fields</code>. That means the command language had almost no grammar. Whitespace simply chopped the line into words.</p><div class="box question"><strong>Try to insert a name with a space</strong><p>What should <code>INSERT users Alice Smith alice@example.com 30</code> mean? Is <code>Alice</code> the name and <code>Smith</code> the email? Is the name two words? A whitespace splitter cannot know, because we never gave the language rules for quoting or punctuation.</p></div><p>SQL fixes this by having syntax. We can write:</p><pre><code>INSERT INTO users VALUES ('Alice Smith', 'alice@example.com', 30, true, NULL);</code></pre><p>The commas, parentheses, keywords, quoted strings, boolean literal, <code>NULL</code>, and semicolon all carry meaning. That means our program must stop thinking in terms of “words separated by spaces” and start thinking in terms of a language.</p><h2 id="s3">3. The SQL pipeline: text is not execution</h2><p>A SQL statement does not jump directly from characters to disk reads. There are layers:</p><div class="pipeline"><div class="pipe"><b>1. Source text</b><code>SELECT ...</code></div><div class="pipe"><b>2. Tokens</b>SELECT, IDENT, FROM…</div><div class="pipe"><b>3. AST</b>SelectStmt</div><div class="pipe"><b>4. Execution</b>Store.Get / Store.Scan</div></div><p>Then, below execution, the storage stack from earlier parts continues:</p><div class="flow"><div class="flowbox">Executor</div><div class="flowarrow">→</div><div class="flowbox">Store + B+tree</div><div class="flowarrow">→</div><div class="flowbox">Pager + pages</div></div><div class="box teacher"><strong>Keep these questions separate</strong><p><strong>Lexer:</strong> “What token begins at this character?”<br/><strong>Parser:</strong> “Do these tokens form a legal statement?”<br/><strong>Executor:</strong> “Does that legal statement make sense for this database, and how do I run it?”<br/><strong>Storage:</strong> “Which pages and bytes hold the requested data?”</p></div><p>This separation is not academic. It explains why <code>SELECT * FROM users WHERE age = 30;</code> can be perfectly valid syntax even if our Part 6 executor does not yet know how to execute arbitrary predicates.</p><h2 id="s4">4. Choose a small SQL language before writing code</h2><p>SQL is enormous. Trying to implement “SQL” as one feature is how a teaching project turns into a parser swamp. We choose a very small subset that is just large enough to drive the Part 5 engine.</p><table><thead><tr><th>Statement</th><th>Part 6 form</th><th>Why we need it</th></tr></thead><tbody>
+<tr><td>CREATE TABLE</td><td><code>CREATE TABLE users (...);</code></td><td>Create a persistent schema/catalog entry</td></tr>
+<tr><td>INSERT</td><td><code>INSERT INTO users VALUES (...);</code></td><td>Exercise typed row encoding</td></tr>
+<tr><td>SELECT</td><td><code>SELECT * FROM users;</code></td><td>Scan rows</td></tr>
+<tr><td>SELECT + WHERE</td><td><code>... WHERE rowid = 2;</code></td><td>Use the B+tree</td></tr>
+<tr><td>DELETE</td><td><code>DELETE FROM users WHERE rowid = 2;</code></td><td>Use tombstone deletion</td></tr>
+</tbody></table><p>We intentionally do <strong>not</strong> implement joins, aliases, arithmetic expressions, <code>ORDER BY</code>, <code>GROUP BY</code>, transactions, column lists in <code>INSERT</code>, secondary indexes, or a full SQL type system. A small complete language is a better teacher than a large half-working one.</p><h2 id="s5">5. Lexing: turn characters into tokens</h2><p>The lexer reads raw characters and emits tokens. A token has at least three useful pieces of information:</p><pre><code>type Token struct {
+    Kind   TokenKind
+    Lexeme string
+    Pos    int
+}</code></pre><p><code>Kind</code> tells later stages what the token means syntactically. <code>Lexeme</code> preserves the source text or decoded string content. <code>Pos</code> records where the token began so an error can point near the right byte.</p><p>For:</p><pre><code>SELECT rowid, name FROM users WHERE rowid = 2;</code></pre><p>we want something conceptually like:</p><div><span class="token">SELECT</span><span class="token">IDENT(rowid)</span><span class="token">,</span><span class="token">IDENT(name)</span><span class="token">FROM</span><span class="token">IDENT(users)</span><span class="token">WHERE</span><span class="token">IDENT(rowid)</span><span class="token">=</span><span class="token">NUMBER(2)</span><span class="token">;</span></div><div class="box insight"><strong>The lexer does not know tables</strong><p>When the lexer sees <code>users</code>, it should not ask the catalog whether a table called users exists. It only knows that the characters form an identifier. Catalog lookup belongs much later, during execution.</p></div><h2 id="s6">6. Keywords and identifiers are not the same thing</h2><p>Consider the two words <code>SELECT</code> and <code>users</code>. They are both letter sequences, but one is a reserved keyword in our grammar and the other is usually an identifier.</p><pre><code>word := input[start:pos]
+if kind, ok := keywords[strings.ToUpper(word)]; ok {
+    return Token{Kind: kind, Lexeme: word, Pos: start}
+}
+return Token{Kind: TokenIdentifier, Lexeme: word, Pos: start}</code></pre><p>We normalize only for the keyword lookup. The lexeme can preserve what the user typed. This gives us case-insensitive keywords:</p><pre><code>select * from users;
+SELECT * FROM users;
+SeLeCt * FrOm users;</code></pre><p>All three produce the same keyword token kinds. Table and column lookup in our storage layer is already case-insensitive, so the pieces fit naturally.</p><h2 id="s7">7. String literals are where naive splitting breaks</h2><p>The first place <code>strings.Fields</code> truly fails is text. SQL needs a way to say “these spaces are part of one value.” We use single-quoted string literals:</p><pre><code>INSERT INTO users VALUES ('Alice Smith', 'alice@example.com', 30, true, NULL);</code></pre><p>The lexer must enter a different mode after the opening quote: keep consuming characters until the matching quote. Spaces and commas inside the string are data, not token separators.</p><p>We also support the classic SQL-style way to include an apostrophe: double it.</p><pre><code>INSERT INTO notes VALUES ('Ada''s note', 'hello world');</code></pre><p>The token value becomes <code>Ada's note</code>. The pair <code>''</code> is not the end of the string; it represents one quote character inside the value.</p><div class="box warning"><strong>Why positions are byte positions</strong><p>The storage engine already measures bounded TEXT in UTF-8 bytes. The lexer keeps its implementation small by tracking byte offsets too. That is fine for this chapter, but a production editor-quality parser might also track line/column positions and Unicode-aware character offsets.</p></div><h2 id="s8">8. Build the lexer one token at a time</h2><p>Now we can implement <code>nextToken()</code> as a decision tree. Skip whitespace. If we reached the end, emit EOF. Otherwise inspect the current byte.</p><pre><code>switch ch {
+case ',': return COMMA
+case '(': return LPAREN
+case ')': return RPAREN
+case ';': return SEMICOLON
+case '*': return STAR
+case '=': return EQUAL
+case ''': return lexString()
+}
+
+if digit or '-' followed by digit:
+    lex a NUMBER
+
+if identifier-start:
+    lex a word
+    keyword lookup or IDENT
+
+otherwise:
+    lexical error</code></pre><p>This code has an important property: it always either consumes input or returns an error. A lexer that can stay at the same position forever will hang the REPL.</p><div class="checkpoint"><h4><span class="step">CHECKPOINT</span>Compile after adding the lexer</h4><pre><code>gofmt -w *.go
+go build -o minidb .</code></pre><p>At this point the database behavior has not changed yet. That is okay. We are building and testing the language front end in layers.</p></div><h2 id="s9">9. Checkpoint: inspect a SELECT as tokens</h2><p>We add a debugging meta command, <code>.tokens</code>. It does not execute SQL. It exposes the lexer so we can inspect its output directly.</p><pre><code>.tokens SELECT rowid, name FROM users WHERE rowid = 2;</code></pre><p>Expected:</p><pre><code>SELECT     pos=0   lexeme="SELECT"
+IDENT      pos=7   lexeme="rowid"
+COMMA      pos=12  lexeme="," 
+IDENT      pos=14  lexeme="name"
+FROM       pos=19  lexeme="FROM"
+IDENT      pos=24  lexeme="users"
+WHERE      pos=30  lexeme="WHERE"
+IDENT      pos=36  lexeme="rowid"
+EQUAL      pos=42  lexeme="="
+NUMBER     pos=44  lexeme="2"
+SEMICOLON  pos=45  lexeme=";"
+EOF        pos=46  lexeme=""</code></pre><div class="box teacher"><strong>Do not rush past this</strong><p>If this token stream is wrong, the parser will appear broken later even when its logic is correct. Parser debugging becomes much easier when you can first ask: “Did the lexer produce the tokens I expected?”</p></div><h2 id="s10">10. Why tokens still are not enough</h2><p>Tokens tell us what pieces exist, but not how they relate. The token sequence:</p><pre><code>SELECT IDENT COMMA IDENT FROM IDENT WHERE IDENT EQUAL NUMBER</code></pre><p>still needs structure. Which identifier is the table? Which identifiers are projections? Which tokens belong to the condition? Could the same <code>IDENT EQUAL NUMBER</code> appear somewhere else in a future grammar?</p><p>This is the parser's job. The parser checks whether the token stream matches the grammar and builds a structured representation of the statement.</p><h2 id="s11">11. Write the grammar before the parser</h2><p>Writing the grammar before the parser prevents the code from becoming a pile of ad-hoc “if next token is…” rules. Here is the complete Part 6 language in compact EBNF-like notation:</p><div class="grammar">statement    = create_table | insert | select | delete ;
+
+create_table = CREATE TABLE identifier "(" column_def ("," column_def)* ")" [";"] ;
+column_def   = identifier type_spec [NULL | NOT NULL] ;
+type_spec    = INT | BOOL | TEXT "(" number ")" ;
+
+insert        = INSERT INTO identifier VALUES "(" literal ("," literal)* ")" [";"] ;
+
+select        = SELECT ("*" | identifier ("," identifier)*)
+                FROM identifier [WHERE equality] [";"] ;
+
+delete        = DELETE FROM identifier WHERE equality [";"] ;
+
+equality      = identifier "=" literal ;
+literal       = number | string | TRUE | FALSE | NULL ;</div><p>Notice how small it is. This grammar is not “SQL.” It is <strong>our Part 6 SQL subset</strong>. Being explicit about that boundary lets us produce useful errors instead of pretending unsupported syntax should somehow work.</p><h2 id="s12">12. AST: represent meaning, not punctuation</h2><p>The parser should not hand the executor a bag of tokens. We want an abstract syntax tree: a Go value that represents the meaning of the statement after punctuation has done its job.</p><pre><code>type Statement interface { statementNode() }
+
+type CreateTableStmt struct {
+    Name    string
+    Columns []ColumnDef
+}
+
+type InsertStmt struct {
+    Table  string
+    Values []Literal
+}
+
+type SelectStmt struct {
+    All     bool
+    Columns []string
+    Table   string
+    Where   Expr
+}</code></pre><p>The AST for <code>SELECT rowid, name FROM users WHERE rowid = 2;</code> does not need to remember the comma or semicolon. Those characters helped the parser understand the statement, but they are not part of the semantic result.</p><div class="box insight"><strong>Why “abstract” syntax tree?</strong><p>Because it throws away concrete spelling details that no longer matter. Uppercase vs lowercase keywords, commas, and parentheses around the VALUES list are syntax. The AST keeps the table name, selected columns, values, and expression structure that later stages actually need.</p></div><h2 id="s13">13. Recursive descent: one grammar rule, one function</h2><p>Our grammar is simple enough for a hand-written recursive-descent parser. The basic idea is wonderfully literal: one parser function corresponds to one grammar rule.</p><pre><code>ParseStatement()
+    ├── parseCreateTable()
+    ├── parseInsert()
+    ├── parseSelect()
+    └── parseDelete()
+
+parseSelect()
+    └── parseEquality()   // only if WHERE appears
+
+parseCreateTable()
+    └── parseTypeSpec()</code></pre><p>The parser maintains a cursor into the token slice. Three tiny helpers do most of the control work:</p><pre><code>peek()               // look without consuming
+advance()            // consume one token
+expect(kind, message) // consume required token or return an error
+match(kind)           // consume optional token if present</code></pre><p>This makes parser code read almost like the grammar itself.</p><h2 id="s14">14. Parse CREATE TABLE</h2><p>Start with a statement whose structure is visible: <code>CREATE TABLE</code>.</p><pre><code>CREATE TABLE users (
+    name TEXT(32) NOT NULL,
+    email TEXT(64) NOT NULL,
+    age INT NOT NULL,
+    active BOOL NOT NULL,
+    nickname TEXT(20)
+);</code></pre><p>The parser consumes <code>CREATE</code>, requires <code>TABLE</code>, requires a table identifier, requires <code>(</code>, then loops over column definitions separated by commas until it reaches <code>)</code>.</p><pre><code>CREATE
+  expect TABLE
+  expect table identifier
+  expect '('
+
+  parse column
+  while comma:
+      parse next column
+
+  expect ')' </code></pre><p>Each column definition delegates the type syntax to <code>parseTypeSpec()</code>. That keeps <code>parseCreateTable()</code> focused on table grammar instead of mixing in TEXT-length rules.</p><h2 id="s15">15. SQL nullability changes one Part 5 assumption</h2><p>Part 5 used a teaching shorthand where a trailing <code>?</code> meant nullable. SQL has a more explicit convention, so Part 6 changes only the <em>surface syntax</em>.</p><table><thead><tr><th>Part 5 custom syntax</th><th>Part 6 SQL</th></tr></thead><tbody>
+<tr><td><code>name:TEXT(32)</code></td><td><code>name TEXT(32) NOT NULL</code></td></tr>
+<tr><td><code>nickname:TEXT(20)?</code></td><td><code>nickname TEXT(20)</code></td></tr>
+</tbody></table><p>For our SQL subset, columns are nullable by default unless <code>NOT NULL</code> is present. The parser records that as a boolean in <code>ColumnDef</code>. The executor later converts the AST column definition into the existing Part 5 <code>Column</code> structure.</p><div class="box insight"><strong>Same storage metadata, new syntax</strong><p>The catalog does not care whether nullability came from a question mark in Part 5 or the words <code>NOT NULL</code> in Part 6. Both end up as the same persisted <code>Nullable</code> flag. This is exactly why layering matters.</p></div><h2 id="s16">16. Parse INSERT INTO ... VALUES</h2><p><code>INSERT</code> gives us our first list of typed literals:</p><pre><code>INSERT INTO users VALUES ('Alice Smith', 'alice@example.com', 30, true, NULL);</code></pre><p>The parser does <em>not</em> yet decide whether <code>30</code> is valid for the third column of <code>users</code>. It simply records an integer literal. It does not know the users schema yet.</p><pre><code>type Literal struct {
+    Kind LiteralKind
+    Int  int64
+    Text string
+    Bool bool
+}</code></pre><p>That means parsing an INSERT can succeed even when execution later fails because the table expects a different number of values or a different type. Again: syntax and semantics are separate.</p><h2 id="s17">17. Parse SELECT projections and FROM</h2><p>For SELECT, we support either a star or a comma-separated list of identifiers:</p><pre><code>SELECT * FROM users;
+SELECT rowid, name, age FROM users;</code></pre><p>The AST records either <code>All: true</code> or a list such as <code>["rowid", "name", "age"]</code>. Then it stores the table after <code>FROM</code>.</p><p>Notice what the parser still does not know: whether <code>age</code> actually exists in that table. A statement like <code>SELECT banana FROM users;</code> is grammatically valid. Column resolution belongs to the executor because it requires the catalog/schema.</p><h2 id="s18">18. Parse WHERE as an expression tree</h2><p>Instead of baking <code>rowid = 2</code> directly into <code>SelectStmt</code>, we introduce expression nodes:</p><pre><code>type IdentifierExpr struct { Name string }
+type LiteralExpr struct    { Value Literal }
+type BinaryExpr struct {
+    Left     Expr
+    Operator TokenKind
+    Right    Expr
+}</code></pre><p>So:</p><pre><code>WHERE rowid = 2</code></pre><p>becomes:</p><pre><code>Binary EQUAL
+  Identifier rowid
+  Literal INT 2</code></pre><p>Today, <code>parseEquality()</code> only understands one operator: <code>=</code>. But the tree shape gives us somewhere to grow later. <code>&lt;</code>, <code>&gt;</code>, <code>AND</code>, <code>OR</code>, arithmetic, and parentheses would extend the expression grammar rather than contaminate the SELECT parser.</p><h2 id="s19">19. Parse DELETE safely</h2><p>We require a WHERE clause for DELETE in Part 6:</p><pre><code>DELETE FROM users WHERE rowid = 2;</code></pre><p>This is not a claim about standard SQL. It is a safety and scope decision for our tiny implementation. We have not implemented full-table delete semantics, and an accidental <code>DELETE FROM users;</code> would be a nasty surprise in a learning REPL.</p><p>The parser can therefore give an immediate message if WHERE is missing, before the executor or storage layer is touched.</p><h2 id="s20">20. Good parser errors are part of the design</h2><p>A parser is also an error-reporting system. Compare these two experiences:</p><pre><code>error
+
+// versus
+parse error at byte 0 near "SELEC": expected CREATE, INSERT, SELECT, or DELETE</code></pre><p>Our <code>expect()</code> helper receives a message describing what grammar rule failed. The token carries the position and lexeme. Together they produce errors that teach the user what the parser wanted.</p><p>The lexer does the same for malformed strings:</p><pre><code>lex error at byte 46: unterminated string literal</code></pre><div class="box teacher"><strong>Do not call storage errors parse errors</strong><p><code>SELECT missing_column FROM users;</code> parses successfully. The failure happens later when projection resolution checks the users schema. Keeping error categories honest makes the architecture much easier to debug.</p></div><h2 id="s21">21. Checkpoint: print the AST</h2><p>Just as <code>.tokens</code> exposes the lexer, <code>.ast</code> exposes the parser output.</p><pre><code>.ast SELECT rowid, name FROM users WHERE rowid = 2;</code></pre><p>Expected:</p><pre><code>Select from users
+  Columns rowid, name
+  Where
+    Binary EQUAL
+      Identifier rowid
+      Literal INT 2</code></pre><p>This is one of the most useful checkpoints in the entire chapter. At this point you can prove that the language front end understands the query without opening a table or fetching a page.</p><h2 id="s22">22. Execution is a separate layer</h2><p>Now we cross the boundary from language to database semantics. The executor receives a <code>Statement</code> and dispatches on its concrete AST type.</p><pre><code>switch s := stmt.(type) {
+case *CreateTableStmt:
+    ...
+case *InsertStmt:
+    ...
+case *SelectStmt:
+    ...
+case *DeleteStmt:
+    ...
+}</code></pre><p>This is where table lookup, column lookup, schema type checking, B+tree access, and scans become legal. The parser should remain reusable even if the execution engine changes later.</p><div class="box purplebox"><strong>A useful mental boundary</strong><p>The parser answers: <em>“What did the user ask for?”</em><br/>The executor answers: <em>“Can this database do that request, and which storage operation performs it?”</em></p></div><h2 id="s23">23. Execute CREATE TABLE through the Part 5 catalog</h2><p>Executing CREATE is mostly translation. The AST has syntax-oriented <code>ColumnDef</code> values. The Store expects storage-oriented <code>Column</code> values.</p><pre><code>for each AST column:
+    Column{
+        Name:     def.Name,
+        Type:     def.Type.Type,
+        MaxLen:   def.Type.TextLen,
+        Nullable: def.Nullable,
+    }
+
+store.CreateTable(statement.Name, columns)</code></pre><p>From that point downward, all the Part 5 machinery runs unchanged: schema compilation computes offsets, a B+tree root page is allocated, the table is written to the catalog, and metadata is updated.</p><p>This is a major payoff from the earlier architecture. SQL parsing is not rewriting the database engine. It is feeding a cleaner interface into it.</p><h2 id="s24">24. Execute INSERT with typed literals</h2><p>For INSERT, the parser gave us literals. Now the executor finally has the table schema, so it can type-check each literal against the corresponding column.</p><table><thead><tr><th>Column type</th><th>Accepted literal in Part 6</th><th>Example</th></tr></thead><tbody>
+<tr><td>INT</td><td>integer</td><td><code>30</code></td></tr>
+<tr><td>BOOL</td><td><code>true</code> / <code>false</code></td><td><code>true</code></td></tr>
+<tr><td>TEXT(n)</td><td>single-quoted string</td><td><code>'Alice Smith'</code></td></tr>
+<tr><td>nullable column</td><td><code>NULL</code></td><td><code>NULL</code></td></tr>
+</tbody></table><p>Only after that conversion do we call:</p><pre><code>rowID, err := store.Insert(t.Name, values)</code></pre><p>The Store still does everything from Part 5: encode the row according to the schema, find/allocate a data-page slot, insert the rowid → record-pointer entry into that table's B+tree, and persist mutable table metadata.</p><h2 id="s25">25. Execute SELECT: scan or indexed rowid lookup</h2><p>SELECT lets us reconnect SQL to the performance story from Part 4.</p><div class="grid"><div class="card"><h4>No WHERE</h4><code>SELECT * FROM users;</code><p class="mini">The executor calls <code>Store.Scan</code>. We must visit the table's rows because no usable predicate identifies one row.</p></div><div class="card"><h4>rowid equality</h4><code>SELECT * FROM users WHERE rowid = 42;</code><p class="mini">The executor extracts rowid 42 and calls <code>Store.Get</code>, which follows the persistent B+tree.</p></div></div><p>This is our first tiny taste of planning, but we keep it deliberately simple. There is no optimizer object. The executor has exactly two paths for SELECT in Part 6.</p><div class="box insight"><strong>The parser does not choose the access path</strong><p>The AST for the WHERE clause merely says “rowid equals 42.” Choosing <code>Store.Get</code> instead of <code>Store.Scan</code> is an execution decision. That distinction becomes essential once databases have multiple indexes and more complicated predicates.</p></div><h2 id="s26">26. Projection: SELECT * is not the same as SELECT name</h2><p><code>SELECT *</code> and <code>SELECT name, age</code> should not return the same shape. The executor resolves each requested name against the table schema and builds a projection.</p><pre><code>SELECT * FROM users;
+// output columns: rowid + every user column
+
+SELECT rowid, name, age FROM users;
+// output columns: exactly rowid, name, age</code></pre><p>In this teaching database, we choose to include the implicit <code>rowid</code> in <code>*</code> output so the physical/index identity stays visible. That is a MiniSQLite teaching choice; do not infer that every SQL engine exposes hidden row identifiers this way.</p><p>A misspelled projection such as <code>SELECT nmae FROM users;</code> parses but fails during projection resolution with a schema-aware error.</p><h2 id="s27">27. Execute DELETE through a rowid predicate</h2><p>DELETE reuses the same expression structure as SELECT, but the executor applies a stricter rule: the predicate must be <code>rowid = integer</code>.</p><pre><code>DELETE FROM users WHERE rowid = 2;</code></pre><p>Once the executor extracts <code>2</code>, it calls <code>Store.Delete</code>. The B+tree finds the record pointer, and the row is tombstoned exactly as in Part 5.</p><p>We deliberately do not implement <code>DELETE FROM users WHERE age = 30</code> by silently scanning and deleting matching rows. That would introduce expression evaluation and multi-row mutation semantics that deserve their own careful design.</p><h2 id="s28">28. SQL commands vs database meta commands</h2><p>Database shells usually need commands that are useful for debugging the engine but are not SQL. We make that distinction explicit by prefixing them with a dot:</p><pre><code>.tables
+.schema users
+.tree users
+.datapages users
+.catalogpages
+.stats
+.flush
+.verify
+.pageinfo 2
+.tokens SELECT * FROM users;
+.ast SELECT * FROM users WHERE rowid = 1;
+.quit</code></pre><p>These are <strong>REPL meta commands</strong>. They bypass the SQL parser. This is cleaner than pretending storage-debugging operations like “show me page 7's checksum” are SQL statements.</p><h2 id="s29">29. Replace strings.Fields with a raw-line REPL</h2><p>The old REPL began with:</p><pre><code>parts := strings.Fields(scanner.Text())</code></pre><p>That line must disappear from the SQL path. We keep the entire input line intact:</p><pre><code>line := strings.TrimSpace(scanner.Text())
+
+if strings.HasPrefix(line, ".") {
+    handleMeta(store, line)
+    continue
+}
+
+stmt, err := ParseSQL(line)
+result, err := ExecuteStatement(store, stmt)</code></pre><p>Now quoted strings can contain spaces because only the lexer decides where tokens begin and end.</p><div class="box warning"><strong>One statement per line for now</strong><p>The Part 6 REPL accepts one SQL statement per input line, with an optional trailing semicolon. A production shell usually buffers multiple lines until a complete statement terminator is seen. We intentionally postpone that UI feature so the chapter stays focused on lexing and parsing.</p></div><h2 id="s30">30. Lab: quoted text, spaces, apostrophes, and NULL</h2><p>Build a fresh database and exercise the text cases that the old custom command language could not express cleanly.</p><pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre><pre><code>CREATE TABLE notes (
+    title TEXT(40) NOT NULL,
+    body TEXT(80)
+);
+
+INSERT INTO notes VALUES ('Ada''s note', 'hello world');
+SELECT * FROM notes;</code></pre><p>Expected:</p><pre><code>created table=notes id=1 row_size=152 root_page=2
+inserted 1 row (rowid=1)
+rowid | title | body
+1 | Ada's note | hello world
+(1 row(s))</code></pre><p>The important part is not the pretty output. It is that the characters <code>'Ada''s note'</code> survived source text → lexer → string literal AST → schema type conversion → row encoder → disk → decoder → output.</p><h2 id="s31">31. Lab: parser success can still mean executor rejection</h2><p>Try this:</p><pre><code>SELECT * FROM notes WHERE title = 'Ada''s note';</code></pre><p>The lexer succeeds. The parser succeeds. The AST is a perfectly reasonable equality expression. Then execution says:</p><pre><code>execution error: Part 6 executor only supports WHERE rowid = &lt;integer&gt;: left side must be rowid</code></pre><div class="box insight"><strong>This failure is a success</strong><p>It proves the layers are doing their own jobs. The parser understands a generic equality shape. The executor honestly reports that its current access/evaluation capability is narrower. We have not polluted the grammar with the storage engine's current limitations.</p></div><p>Contrast that with a true syntax error:</p><pre><code>SELEC * FROM notes;
+parse error at byte 0 near "SELEC": expected CREATE, INSERT, SELECT, or DELETE</code></pre><p>And a lexical error:</p><pre><code>INSERT INTO notes VALUES ('oops, 'unterminated');
+lex error ... unterminated string literal</code></pre><h2 id="s32">32. Compatibility experiment: open a Part 5 database</h2><p>If you still have a Part 5 database, open it with the Part 6 binary. Because the storage format did not change, the new SQL front end should be able to query the old rows.</p><pre><code>./minidb part5.db
+
+minidb&gt; SELECT * FROM users;</code></pre><p>This experiment teaches a subtle systems lesson: <strong>the query language version and the file-format version are not the same thing</strong>. A database can gain syntax features without rewriting every page on disk.</p><p>If we had changed page layouts, catalog entry encoding, checksum metadata, or row encoding, then a file-format version discussion would be necessary. We did none of those things here.</p><h2 id="s33">33. What we deliberately did not solve</h2><p>Our SQL front end is intentionally incomplete. The omissions are useful because each one points at a real database subsystem:</p><table><thead><tr><th>Missing feature</th><th>Why it is not “just parser work”</th></tr></thead><tbody>
+<tr><td>WHERE on normal columns</td><td>Needs expression evaluation and usually scan/index planning</td></tr>
+<tr><td>AND / OR / comparisons</td><td>Needs precedence, richer AST nodes, evaluator semantics</td></tr>
+<tr><td>INSERT column lists</td><td>Needs name-to-column mapping, omitted-value/default rules</td></tr>
+<tr><td>UPDATE</td><td>Needs mutation semantics; variable-size rows complicate replacement</td></tr>
+<tr><td>JOIN</td><td>Needs multiple table bindings and a join execution strategy</td></tr>
+<tr><td>ORDER BY</td><td>Needs sorting or an index order the planner can exploit</td></tr>
+<tr><td>Transactions</td><td>Needs atomicity/recovery, not new grammar alone</td></tr>
+<tr><td>SQL standard compatibility</td><td>Requires a much larger grammar and many semantic rules</td></tr>
+</tbody></table><p>The right takeaway is not “our parser is weak.” It is that parsing is only one part of SQL support. Real database behavior lives in the interaction between syntax, semantics, planning, execution, storage, and recovery.</p><h2 id="s34">34. Exercises</h2><div class="checkpoint"><h4>Exercise 1 — Predict the token stream</h4><p>Before running <code>.tokens</code>, write the token kinds for <code>INSERT INTO t VALUES ('hello world', -7, false, NULL);</code>. Include punctuation and EOF.</p></div><div class="checkpoint"><h4>Exercise 2 — Find the layer</h4><p>For each failure, say whether it belongs to lexer, parser, executor, or storage: unterminated quote; missing <code>FROM</code>; unknown table; checksum mismatch.</p></div><div class="checkpoint"><h4>Exercise 3 — Add != to the lexer and AST</h4><p>Add a <code>TokenNotEqual</code>. Do not execute it yet. Make <code>.tokens</code> and <code>.ast</code> understand <code>age != 30</code> first.</p></div><div class="checkpoint"><h4>Exercise 4 — Add string position tests</h4><p>Write table-driven tests for empty strings, doubled apostrophes, spaces, commas inside strings, and unterminated strings.</p></div><div class="checkpoint"><h4>Exercise 5 — Add INSERT column lists</h4><p>Support <code>INSERT INTO users (name, age) VALUES ('alice', 30)</code>. Decide what omitted columns mean. Nullable? Default? Error? Write the rule before code.</p></div><div class="checkpoint"><h4>Exercise 6 — Execute non-rowid equality by scanning</h4><p>Let the parser stay unchanged. Add an executor path that scans rows and evaluates one equality predicate such as <code>age = 30</code>. Measure how many rows/pages are examined.</p></div><div class="checkpoint"><h4>Exercise 7 — Operator precedence</h4><p>Design, on paper first, a grammar for <code>age = 30 AND active = true OR name = 'bob'</code>. Which operator binds more tightly? Show the AST you want before coding.</p></div><div class="checkpoint"><h4>Exercise 8 — Multi-line REPL</h4><p>Buffer input until a semicolon appears outside a quoted string. Be careful: a semicolon inside <code>'text; still text'</code> must not end the statement.</p></div><div class="checkpoint"><h4>Exercise 9 — Parser tests without a database</h4><p>Write tests that call <code>ParseSQL</code> only. This should prove the parser can be tested independently of files, pages, and B+trees.</p></div><div class="checkpoint"><h4>Exercise 10 — Senior: separate binding from execution</h4><p>Introduce a binder/semantic-analysis phase that resolves table and column names into catalog/schema references before execution. Ask what information should be stored in a bound SELECT.</p></div><h2 id="s35">35. Complete program — only after the pieces make sense</h2><p>If you typed the chapter incrementally, none of the code below should feel magical. This is the complete Part 6 project. The storage files are mostly carried forward from Part 5; the new learning center is <code>lexer.go</code>, <code>parser.go</code>, <code>sql.go</code>, and the SQL-aware <code>main.go</code>.</p><div class="box warning"><strong>Read this only after the checkpoints</strong><p>The full listing is convenient for comparison and recovery if your incremental version drifted. It is not a substitute for building the lexer/parser in the earlier steps.</p></div><h3>go.mod</h3><pre><code>module minidb
+
+go 1.22
+</code></pre><h3>format.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+)
+
+const (
+	PageSize          = 4096
+	PageHeaderSize    = 32
+	PageMagic         = "PG05"
+	PageHeaderVersion = uint16(1)
+	ChecksumAlgorithm = uint32(1)
+)
+
+type PageType uint8
+
+const (
+	PageTypeMetadata      PageType = 1
+	PageTypeData          PageType = 2
+	PageTypeBTreeLeaf     PageType = 3
+	PageTypeBTreeInternal PageType = 4
+	PageTypeCatalog       PageType = 5
+)
+
+func (t PageType) String() string {
+	switch t {
+	case PageTypeMetadata:
+		return "metadata"
+	case PageTypeData:
+		return "data"
+	case PageTypeBTreeLeaf:
+		return "btree-leaf"
+	case PageTypeBTreeInternal:
+		return "btree-internal"
+	case PageTypeCatalog:
+		return "catalog"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(t))
+	}
+}
+
+func validPageType(t PageType) bool {
+	return t == PageTypeMetadata || t == PageTypeData || t == PageTypeBTreeLeaf || t == PageTypeBTreeInternal || t == PageTypeCatalog
+}
+
+type PageHeaderInfo struct {
+	Type       PageType
+	Number     uint64
+	Generation uint64
+	Checksum   uint32
+}
+
+func initializePageData(data []byte, pageNum uint64, pageType PageType) error {
+	if len(data) != PageSize {
+		return fmt.Errorf("initialize page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	if !validPageType(pageType) {
+		return fmt.Errorf("initialize page: invalid page type %d", pageType)
+	}
+	clear(data)
+	copy(data[0:4], []byte(PageMagic))
+	binary.LittleEndian.PutUint16(data[4:6], PageHeaderVersion)
+	data[6] = byte(pageType)
+	binary.LittleEndian.PutUint64(data[8:16], pageNum)
+	return nil
+}
+
+func computePageChecksum(data []byte) (uint32, error) {
+	if len(data) != PageSize {
+		return 0, fmt.Errorf("checksum: expected %d bytes, got %d", PageSize, len(data))
+	}
+	h := crc32.NewIEEE()
+	_, _ = h.Write(data[:24])
+	_, _ = h.Write([]byte{0, 0, 0, 0})
+	_, _ = h.Write(data[28:])
+	return h.Sum32(), nil
+}
+
+func decodePageHeader(data []byte) PageHeaderInfo {
+	return PageHeaderInfo{
+		Type:       PageType(data[6]),
+		Number:     binary.LittleEndian.Uint64(data[8:16]),
+		Generation: binary.LittleEndian.Uint64(data[16:24]),
+		Checksum:   binary.LittleEndian.Uint32(data[24:28]),
+	}
+}
+
+func sealPageData(data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("seal page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	generation := binary.LittleEndian.Uint64(data[16:24]) + 1
+	binary.LittleEndian.PutUint64(data[16:24], generation)
+	binary.LittleEndian.PutUint32(data[24:28], 0)
+	checksum, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	binary.LittleEndian.PutUint32(data[24:28], checksum)
+	return decodePageHeader(data), nil
+}
+
+func validatePageData(expectedPageNum uint64, data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: expected %d bytes, got %d", expectedPageNum, PageSize, len(data))
+	}
+	if string(data[0:4]) != PageMagic {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: bad page magic %q", expectedPageNum, string(data[0:4]))
+	}
+	if got := binary.LittleEndian.Uint16(data[4:6]); got != PageHeaderVersion {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: unsupported page-header version %d", expectedPageNum, got)
+	}
+	info := decodePageHeader(data)
+	if !validPageType(info.Type) {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: invalid page type %d", expectedPageNum, info.Type)
+	}
+	if info.Number != expectedPageNum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: stored page number is %d", expectedPageNum, info.Number)
+	}
+	if info.Checksum == 0 {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: missing checksum", expectedPageNum)
+	}
+	computed, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if computed != info.Checksum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: checksum mismatch: stored=%08x computed=%08x", expectedPageNum, info.Checksum, computed)
+	}
+	return info, nil
+}
+</code></pre><h3>pager.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
+type Page struct {
+	Number uint64
+	Type   PageType
+	Data   []byte
+	dirty  bool
+}
+
+func (p *Page) MarkDirty() { p.dirty = true }
+
+type PagerStats struct {
+	CachedPages        int
+	TotalPages         uint64
+	CacheHits          uint64
+	DiskReads          uint64
+	DiskWrites         uint64
+	ValidationFailures uint64
+}
+
+type Pager struct {
+	file               *os.File
+	pages              map[uint64]*Page
+	numPages           uint64
+	cacheHits          uint64
+	diskReads          uint64
+	diskWrites         uint64
+	validationFailures uint64
+}
+
+func OpenPager(path string) (*Pager, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if info.Size()%PageSize != 0 {
+		file.Close()
+		return nil, fmt.Errorf("database size %d is not a multiple of page size %d", info.Size(), PageSize)
+	}
+	return &amp;Pager{file: file, pages: make(map[uint64]*Page), numPages: uint64(info.Size() / PageSize)}, nil
+}
+
+func (p *Pager) GetPage(pageNum uint64) (*Page, error) {
+	if page, ok := p.pages[pageNum]; ok {
+		p.cacheHits++
+		return page, nil
+	}
+	if pageNum &gt;= p.numPages {
+		return nil, fmt.Errorf("page %d does not exist", pageNum)
+	}
+	page := &amp;Page{Number: pageNum, Data: make([]byte, PageSize)}
+	n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil &amp;&amp; err != io.EOF {
+		return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+	}
+	p.diskReads++
+	info, err := validatePageData(pageNum, page.Data)
+	if err != nil {
+		p.validationFailures++
+		return nil, err
+	}
+	page.Type = info.Type
+	p.pages[pageNum] = page
+	return page, nil
+}
+
+func (p *Pager) NewPage(pageType PageType) (*Page, error) {
+	pageNum := p.numPages
+	page := &amp;Page{Number: pageNum, Type: pageType, Data: make([]byte, PageSize), dirty: true}
+	if err := initializePageData(page.Data, pageNum, pageType); err != nil {
+		return nil, err
+	}
+	p.pages[pageNum] = page
+	p.numPages++
+	return page, nil
+}
+
+func (p *Pager) FlushPage(pageNum uint64) error {
+	page, ok := p.pages[pageNum]
+	if !ok || !page.dirty {
+		return nil
+	}
+	if _, err := sealPageData(page.Data); err != nil {
+		return err
+	}
+	n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil {
+		return fmt.Errorf("write page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return fmt.Errorf("write page %d: expected %d bytes, wrote %d", pageNum, PageSize, n)
+	}
+	page.dirty = false
+	p.diskWrites++
+	return nil
+}
+
+func (p *Pager) FlushAll() error {
+	for pageNum := range p.pages {
+		if err := p.FlushPage(pageNum); err != nil {
+			return err
+		}
+	}
+	return p.file.Sync()
+}
+
+func (p *Pager) VerifyAll() (uint64, error) {
+	if err := p.FlushAll(); err != nil {
+		return 0, err
+	}
+	buf := make([]byte, PageSize)
+	for pageNum := uint64(0); pageNum &lt; p.numPages; pageNum++ {
+		n, err := p.file.ReadAt(buf, int64(pageNum)*PageSize)
+		if err != nil &amp;&amp; err != io.EOF {
+			return pageNum, fmt.Errorf("verify page %d: %w", pageNum, err)
+		}
+		if n != PageSize {
+			return pageNum, fmt.Errorf("verify page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+		}
+		if _, err := validatePageData(pageNum, buf); err != nil {
+			p.validationFailures++
+			return pageNum, err
+		}
+	}
+	return p.numPages, nil
+}
+
+func (p *Pager) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	page, err := p.GetPage(pageNum)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if page.dirty {
+		if err := p.FlushPage(pageNum); err != nil {
+			return PageHeaderInfo{}, err
+		}
+	}
+	return validatePageData(pageNum, page.Data)
+}
+
+func (p *Pager) Stats() PagerStats {
+	return PagerStats{len(p.pages), p.numPages, p.cacheHits, p.diskReads, p.diskWrites, p.validationFailures}
+}
+
+func (p *Pager) Close() error {
+	flushErr := p.FlushAll()
+	closeErr := p.file.Close()
+	if flushErr != nil {
+		return flushErr
+	}
+	return closeErr
+}
+</code></pre><h3>btree.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+// BTreeMaxKeys is intentionally tiny so a learner can trigger splits with a
+// handful of INSERTs. A production page would use far more of its 4096 bytes.
+const BTreeMaxKeys = 7
+
+const (
+	nodeKeyCountOffset = PageHeaderSize
+	nodeSpecialOffset  = 40 // leaf: next leaf; internal: first child
+	nodeEntriesOffset  = 48
+	leafEntrySize      = 24
+	internalEntrySize  = 16
+)
+
+type RecordPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type leafEntry struct {
+	Key int64
+	Ptr RecordPointer
+}
+
+type internalEntry struct {
+	Key        int64
+	RightChild uint64
+}
+
+type splitResult struct {
+	Separator int64
+	RightPage uint64
+}
+
+type BTree struct {
+	pager *Pager
+	root  uint64
+}
+
+func newBTree(pager *Pager, root uint64) *BTree { return &amp;BTree{pager: pager, root: root} }
+func (t *BTree) RootPage() uint64               { return t.root }
+
+func keyCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[nodeKeyCountOffset : nodeKeyCountOffset+2]))
+}
+
+func setKeyCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[nodeKeyCountOffset:nodeKeyCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func leafNext(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setLeafNext(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+func internalFirstChild(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[nodeSpecialOffset : nodeSpecialOffset+8])
+}
+func setInternalFirstChild(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[nodeSpecialOffset:nodeSpecialOffset+8], n)
+	page.MarkDirty()
+}
+
+func readLeafEntries(page *Page) []leafEntry {
+	n := keyCount(page)
+	out := make([]leafEntry, 0, n)
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*leafEntrySize
+		out = append(out, leafEntry{
+			Key: int64(binary.LittleEndian.Uint64(page.Data[off : off+8])),
+			Ptr: RecordPointer{Page: binary.LittleEndian.Uint64(page.Data[off+8 : off+16]), Slot: binary.LittleEndian.Uint16(page.Data[off+16 : off+18])},
+		})
+	}
+	return out
+}
+
+func writeLeafEntries(page *Page, entries []leafEntry) error {
+	if len(entries) &gt; BTreeMaxKeys {
+		return fmt.Errorf("leaf page %d overflow: %d keys", page.Number, len(entries))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	for i, e := range entries {
+		off := nodeEntriesOffset + i*leafEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(e.Key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], e.Ptr.Page)
+		binary.LittleEndian.PutUint16(page.Data[off+16:off+18], e.Ptr.Slot)
+	}
+	setKeyCount(page, len(entries))
+	page.MarkDirty()
+	return nil
+}
+
+func readInternal(page *Page) ([]int64, []uint64) {
+	n := keyCount(page)
+	keys := make([]int64, 0, n)
+	children := make([]uint64, 0, n+1)
+	children = append(children, internalFirstChild(page))
+	for i := 0; i &lt; n; i++ {
+		off := nodeEntriesOffset + i*internalEntrySize
+		keys = append(keys, int64(binary.LittleEndian.Uint64(page.Data[off:off+8])))
+		children = append(children, binary.LittleEndian.Uint64(page.Data[off+8:off+16]))
+	}
+	return keys, children
+}
+
+func writeInternal(page *Page, keys []int64, children []uint64) error {
+	if len(keys) &gt; BTreeMaxKeys {
+		return fmt.Errorf("internal page %d overflow: %d keys", page.Number, len(keys))
+	}
+	if len(children) != len(keys)+1 {
+		return fmt.Errorf("internal page %d: %d keys need %d children, got %d", page.Number, len(keys), len(keys)+1, len(children))
+	}
+	clear(page.Data[nodeEntriesOffset:])
+	setInternalFirstChild(page, children[0])
+	for i, key := range keys {
+		off := nodeEntriesOffset + i*internalEntrySize
+		binary.LittleEndian.PutUint64(page.Data[off:off+8], uint64(key))
+		binary.LittleEndian.PutUint64(page.Data[off+8:off+16], children[i+1])
+	}
+	setKeyCount(page, len(keys))
+	page.MarkDirty()
+	return nil
+}
+
+func (t *BTree) Lookup(key int64) (RecordPointer, int, error) {
+	pageNum := t.root
+	visits := 0
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return RecordPointer{}, visits, err
+		}
+		visits++
+		switch page.Type {
+		case PageTypeBTreeLeaf:
+			entries := readLeafEntries(page)
+			lo, hi := 0, len(entries)
+			for lo &lt; hi {
+				mid := lo + (hi-lo)/2
+				if entries[mid].Key &lt; key {
+					lo = mid + 1
+				} else {
+					hi = mid
+				}
+			}
+			if lo &lt; len(entries) &amp;&amp; entries[lo].Key == key {
+				return entries[lo].Ptr, visits, nil
+			}
+			return RecordPointer{}, visits, ErrNotFound
+		case PageTypeBTreeInternal:
+			keys, children := readInternal(page)
+			childIndex := 0
+			for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+				childIndex++
+			}
+			pageNum = children[childIndex]
+		default:
+			return RecordPointer{}, visits, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+	}
+}
+
+func (t *BTree) Insert(key int64, ptr RecordPointer) error {
+	if _, _, err := t.Lookup(key); err == nil {
+		return fmt.Errorf("duplicate index key %d", key)
+	} else if err != ErrNotFound {
+		return err
+	}
+	split, err := t.insertRecursive(t.root, key, ptr)
+	if err != nil {
+		return err
+	}
+	if split == nil {
+		return nil
+	}
+	oldRoot := t.root
+	newRoot, err := t.pager.NewPage(PageTypeBTreeInternal)
+	if err != nil {
+		return err
+	}
+	if err := writeInternal(newRoot, []int64{split.Separator}, []uint64{oldRoot, split.RightPage}); err != nil {
+		return err
+	}
+	t.root = newRoot.Number
+	return nil
+}
+
+func (t *BTree) insertRecursive(pageNum uint64, key int64, ptr RecordPointer) (*splitResult, error) {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return nil, err
+	}
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		return t.insertLeaf(page, key, ptr)
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		childIndex := 0
+		for childIndex &lt; len(keys) &amp;&amp; key &gt;= keys[childIndex] {
+			childIndex++
+		}
+		childSplit, err := t.insertRecursive(children[childIndex], key, ptr)
+		if err != nil || childSplit == nil {
+			return childSplit, err
+		}
+
+		keys = append(keys, 0)
+		copy(keys[childIndex+1:], keys[childIndex:])
+		keys[childIndex] = childSplit.Separator
+		children = append(children, 0)
+		copy(children[childIndex+2:], children[childIndex+1:])
+		children[childIndex+1] = childSplit.RightPage
+
+		if len(keys) &lt;= BTreeMaxKeys {
+			return nil, writeInternal(page, keys, children)
+		}
+
+		mid := len(keys) / 2
+		promoted := keys[mid]
+		leftKeys := append([]int64(nil), keys[:mid]...)
+		leftChildren := append([]uint64(nil), children[:mid+1]...)
+		rightKeys := append([]int64(nil), keys[mid+1:]...)
+		rightChildren := append([]uint64(nil), children[mid+1:]...)
+
+		if err := writeInternal(page, leftKeys, leftChildren); err != nil {
+			return nil, err
+		}
+		right, err := t.pager.NewPage(PageTypeBTreeInternal)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeInternal(right, rightKeys, rightChildren); err != nil {
+			return nil, err
+		}
+		return &amp;splitResult{Separator: promoted, RightPage: right.Number}, nil
+	default:
+		return nil, fmt.Errorf("btree insert: page %d has type %s", page.Number, page.Type)
+	}
+}
+
+func (t *BTree) insertLeaf(page *Page, key int64, ptr RecordPointer) (*splitResult, error) {
+	entries := readLeafEntries(page)
+	pos := 0
+	for pos &lt; len(entries) &amp;&amp; entries[pos].Key &lt; key {
+		pos++
+	}
+	if pos &lt; len(entries) &amp;&amp; entries[pos].Key == key {
+		return nil, fmt.Errorf("duplicate index key %d", key)
+	}
+	entries = append(entries, leafEntry{})
+	copy(entries[pos+1:], entries[pos:])
+	entries[pos] = leafEntry{Key: key, Ptr: ptr}
+	if len(entries) &lt;= BTreeMaxKeys {
+		return nil, writeLeafEntries(page, entries)
+	}
+
+	mid := len(entries) / 2
+	leftEntries := append([]leafEntry(nil), entries[:mid]...)
+	rightEntries := append([]leafEntry(nil), entries[mid:]...)
+	oldNext := leafNext(page)
+	right, err := t.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(page, leftEntries); err != nil {
+		return nil, err
+	}
+	if err := writeLeafEntries(right, rightEntries); err != nil {
+		return nil, err
+	}
+	setLeafNext(right, oldNext)
+	setLeafNext(page, right.Number)
+	return &amp;splitResult{Separator: rightEntries[0].Key, RightPage: right.Number}, nil
+}
+
+func (t *BTree) leftmostLeaf() (uint64, error) {
+	pageNum := t.root
+	for {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return 0, err
+		}
+		if page.Type == PageTypeBTreeLeaf {
+			return pageNum, nil
+		}
+		if page.Type != PageTypeBTreeInternal {
+			return 0, fmt.Errorf("btree: page %d has type %s", page.Number, page.Type)
+		}
+		pageNum = internalFirstChild(page)
+	}
+}
+
+func (t *BTree) AllPointers() ([]RecordPointer, error) {
+	pageNum, err := t.leftmostLeaf()
+	if err != nil {
+		return nil, err
+	}
+	var out []RecordPointer
+	for pageNum != 0 {
+		page, err := t.pager.GetPage(pageNum)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeBTreeLeaf {
+			return nil, fmt.Errorf("btree scan: page %d is %s", pageNum, page.Type)
+		}
+		for _, e := range readLeafEntries(page) {
+			out = append(out, e.Ptr)
+		}
+		pageNum = leafNext(page)
+	}
+	return out, nil
+}
+
+func (t *BTree) Dump() (string, error) {
+	var b strings.Builder
+	if err := t.dumpPage(&amp;b, t.root, 0); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+func (t *BTree) dumpPage(b *strings.Builder, pageNum uint64, depth int) error {
+	page, err := t.pager.GetPage(pageNum)
+	if err != nil {
+		return err
+	}
+	indent := strings.Repeat("  ", depth)
+	switch page.Type {
+	case PageTypeBTreeLeaf:
+		entries := readLeafEntries(page)
+		fmt.Fprintf(b, "%sleaf page=%d keys=[", indent, pageNum)
+		for i, e := range entries {
+			if i &gt; 0 {
+				b.WriteString(" ")
+			}
+			fmt.Fprintf(b, "%d", e.Key)
+		}
+		fmt.Fprintf(b, "] next=%d\n", leafNext(page))
+	case PageTypeBTreeInternal:
+		keys, children := readInternal(page)
+		fmt.Fprintf(b, "%sinternal page=%d keys=%v children=%v\n", indent, pageNum, keys, children)
+		for _, child := range children {
+			if err := t.dumpPage(b, child, depth+1); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("tree dump: page %d has type %s", pageNum, page.Type)
+	}
+	return nil
+}
+</code></pre><h3>row.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+const (
+	MaxColumns       = 10
+	MaxColumnNameLen = 24
+	MaxTextLen       = 512
+	RowHeaderSize    = 24
+)
+
+type ColumnType uint8
+
+const (
+	TypeInt64 ColumnType = 1
+	TypeText  ColumnType = 2
+	TypeBool  ColumnType = 3
+)
+
+func (t ColumnType) String() string {
+	switch t {
+	case TypeInt64:
+		return "INT"
+	case TypeText:
+		return "TEXT"
+	case TypeBool:
+		return "BOOL"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", uint8(t))
+	}
+}
+
+type Column struct {
+	Name     string
+	Type     ColumnType
+	Nullable bool
+	MaxLen   uint16
+	Offset   uint16
+	Width    uint16
+}
+
+type Schema struct {
+	Columns []Column
+	RowSize uint32
+}
+
+type Value struct {
+	Type ColumnType
+	Null bool
+	Int  int64
+	Text string
+	Bool bool
+}
+
+type Row struct {
+	RowID   int64
+	Deleted bool
+	Values  []Value
+}
+
+func columnWidth(c Column) (uint16, error) {
+	switch c.Type {
+	case TypeInt64:
+		return 8, nil
+	case TypeBool:
+		return 1, nil
+	case TypeText:
+		if c.MaxLen == 0 || c.MaxLen &gt; MaxTextLen {
+			return 0, fmt.Errorf("TEXT length must be between 1 and %d", MaxTextLen)
+		}
+		return 2 + c.MaxLen, nil
+	default:
+		return 0, fmt.Errorf("unsupported column type %d", c.Type)
+	}
+}
+
+func CompileSchema(columns []Column) (Schema, error) {
+	if len(columns) == 0 {
+		return Schema{}, fmt.Errorf("a table needs at least one column")
+	}
+	if len(columns) &gt; MaxColumns {
+		return Schema{}, fmt.Errorf("at most %d columns are supported", MaxColumns)
+	}
+	seen := map[string]bool{}
+	compiled := make([]Column, len(columns))
+	offset := RowHeaderSize
+	for i, c := range columns {
+		if c.Name == "" || len([]byte(c.Name)) &gt; MaxColumnNameLen {
+			return Schema{}, fmt.Errorf("column %q must be 1..%d bytes", c.Name, MaxColumnNameLen)
+		}
+		key := strings.ToLower(c.Name)
+		if seen[key] {
+			return Schema{}, fmt.Errorf("duplicate column name %q", c.Name)
+		}
+		seen[key] = true
+		width, err := columnWidth(c)
+		if err != nil {
+			return Schema{}, fmt.Errorf("column %s: %w", c.Name, err)
+		}
+		if offset+int(width) &gt; 65535 {
+			return Schema{}, fmt.Errorf("row layout is too large")
+		}
+		c.Offset = uint16(offset)
+		c.Width = width
+		compiled[i] = c
+		offset += int(width)
+	}
+	// Round rows to 8 bytes so offsets are easier to inspect in a hex dump.
+	if rem := offset % 8; rem != 0 {
+		offset += 8 - rem
+	}
+	if offset &gt; PageSize-dataRowsOffset {
+		return Schema{}, fmt.Errorf("row size %d is too large to fit in one data page", offset)
+	}
+	return Schema{Columns: compiled, RowSize: uint32(offset)}, nil
+}
+
+func ParseColumnSpec(spec string) (Column, error) {
+	pair := strings.SplitN(spec, ":", 2)
+	if len(pair) != 2 || pair[0] == "" || pair[1] == "" {
+		return Column{}, fmt.Errorf("column spec %q must look like name:INT, name:BOOL, or name:TEXT(40)", spec)
+	}
+	name := pair[0]
+	typeSpec := pair[1]
+	nullable := false
+	if strings.HasSuffix(typeSpec, "?") {
+		nullable = true
+		typeSpec = strings.TrimSuffix(typeSpec, "?")
+	}
+	upper := strings.ToUpper(typeSpec)
+	c := Column{Name: name, Nullable: nullable}
+	switch {
+	case upper == "INT" || upper == "INTEGER" || upper == "INT64":
+		c.Type = TypeInt64
+	case upper == "BOOL" || upper == "BOOLEAN":
+		c.Type = TypeBool
+	case strings.HasPrefix(upper, "TEXT(") &amp;&amp; strings.HasSuffix(upper, ")"):
+		raw := upper[len("TEXT(") : len(upper)-1]
+		n, err := strconv.Atoi(raw)
+		if err != nil || n &lt; 1 || n &gt; MaxTextLen {
+			return Column{}, fmt.Errorf("TEXT length in %q must be 1..%d", spec, MaxTextLen)
+		}
+		c.Type = TypeText
+		c.MaxLen = uint16(n)
+	default:
+		return Column{}, fmt.Errorf("unsupported type %q", typeSpec)
+	}
+	return c, nil
+}
+
+func ParseValueToken(c Column, token string) (Value, error) {
+	if strings.EqualFold(token, "NULL") {
+		if !c.Nullable {
+			return Value{}, fmt.Errorf("column %s is NOT NULL", c.Name)
+		}
+		return Value{Type: c.Type, Null: true}, nil
+	}
+	v := Value{Type: c.Type}
+	switch c.Type {
+	case TypeInt64:
+		n, err := strconv.ParseInt(token, 10, 64)
+		if err != nil {
+			return Value{}, fmt.Errorf("column %s expects INT, got %q", c.Name, token)
+		}
+		v.Int = n
+	case TypeBool:
+		switch strings.ToLower(token) {
+		case "true", "1", "yes":
+			v.Bool = true
+		case "false", "0", "no":
+			v.Bool = false
+		default:
+			return Value{}, fmt.Errorf("column %s expects BOOL, got %q", c.Name, token)
+		}
+	case TypeText:
+		if len([]byte(token)) &gt; int(c.MaxLen) {
+			return Value{}, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+		}
+		v.Text = token
+	default:
+		return Value{}, fmt.Errorf("column %s has unsupported type %d", c.Name, c.Type)
+	}
+	return v, nil
+}
+
+func setNullBit(buf []byte, index int) {
+	byteIndex := 16 + index/8
+	bit := uint(index % 8)
+	buf[byteIndex] |= 1 &lt;&lt; bit
+}
+
+func nullBit(buf []byte, index int) bool {
+	byteIndex := 16 + index/8
+	bit := uint(index % 8)
+	return buf[byteIndex]&amp;(1&lt;&lt;bit) != 0
+}
+
+func EncodeRow(schema Schema, rowID int64, values []Value) ([]byte, error) {
+	if len(values) != len(schema.Columns) {
+		return nil, fmt.Errorf("expected %d values, got %d", len(schema.Columns), len(values))
+	}
+	buf := make([]byte, schema.RowSize)
+	binary.LittleEndian.PutUint64(buf[8:16], uint64(rowID))
+	for i, c := range schema.Columns {
+		v := values[i]
+		if v.Null {
+			if !c.Nullable {
+				return nil, fmt.Errorf("column %s is NOT NULL", c.Name)
+			}
+			setNullBit(buf, i)
+			continue
+		}
+		if v.Type != c.Type {
+			return nil, fmt.Errorf("column %s type mismatch", c.Name)
+		}
+		off := int(c.Offset)
+		switch c.Type {
+		case TypeInt64:
+			binary.LittleEndian.PutUint64(buf[off:off+8], uint64(v.Int))
+		case TypeBool:
+			if v.Bool {
+				buf[off] = 1
+			}
+		case TypeText:
+			raw := []byte(v.Text)
+			if len(raw) &gt; int(c.MaxLen) {
+				return nil, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+			}
+			binary.LittleEndian.PutUint16(buf[off:off+2], uint16(len(raw)))
+			copy(buf[off+2:off+2+len(raw)], raw)
+		}
+	}
+	return buf, nil
+}
+
+func DecodeRow(schema Schema, buf []byte) (Row, error) {
+	if len(buf) != int(schema.RowSize) {
+		return Row{}, fmt.Errorf("decode row: expected %d bytes, got %d", schema.RowSize, len(buf))
+	}
+	row := Row{
+		RowID:   int64(binary.LittleEndian.Uint64(buf[8:16])),
+		Deleted: buf[0]&amp;1 != 0,
+		Values:  make([]Value, len(schema.Columns)),
+	}
+	for i, c := range schema.Columns {
+		v := Value{Type: c.Type}
+		if nullBit(buf, i) {
+			v.Null = true
+			row.Values[i] = v
+			continue
+		}
+		off := int(c.Offset)
+		switch c.Type {
+		case TypeInt64:
+			v.Int = int64(binary.LittleEndian.Uint64(buf[off : off+8]))
+		case TypeBool:
+			v.Bool = buf[off] != 0
+		case TypeText:
+			n := int(binary.LittleEndian.Uint16(buf[off : off+2]))
+			if n &gt; int(c.MaxLen) {
+				return Row{}, fmt.Errorf("column %s has invalid text length %d", c.Name, n)
+			}
+			v.Text = string(buf[off+2 : off+2+n])
+		default:
+			return Row{}, fmt.Errorf("column %s has unsupported type %d", c.Name, c.Type)
+		}
+		row.Values[i] = v
+	}
+	return row, nil
+}
+
+func FormatValue(v Value) string {
+	if v.Null {
+		return "NULL"
+	}
+	switch v.Type {
+	case TypeInt64:
+		return strconv.FormatInt(v.Int, 10)
+	case TypeBool:
+		return strconv.FormatBool(v.Bool)
+	case TypeText:
+		return v.Text
+	default:
+		return "&lt;?&gt;"
+	}
+}
+</code></pre><h3>catalog.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"strings"
+)
+
+const (
+	MaxTableNameLen = 32
+
+	catalogSlotCountOffset = PageHeaderSize
+	catalogNextPageOffset  = 40
+	catalogEntriesOffset   = 64
+	CatalogEntrySize       = 512
+	CatalogSlotsPerPage    = (PageSize - catalogEntriesOffset) / CatalogEntrySize
+
+	catalogActiveOffset    = 0
+	catalogNameLenOffset   = 1
+	catalogColumnCountOff  = 2
+	catalogRowSizeOffset   = 4
+	catalogTableIDOffset   = 8
+	catalogRootPageOffset  = 16
+	catalogFirstDataOffset = 24
+	catalogLastDataOffset  = 32
+	catalogNextRowIDOffset = 40
+	catalogNameOffset      = 48
+	catalogColumnsOffset   = 80
+
+	catalogColumnSize       = 40
+	catalogColTypeOffset    = 0
+	catalogColNullableOff   = 1
+	catalogColNameLenOffset = 2
+	catalogColMaxLenOffset  = 4
+	catalogColRowOffOffset  = 6
+	catalogColWidthOffset   = 8
+	catalogColNameOffset    = 16
+)
+
+type CatalogPointer struct {
+	Page uint64
+	Slot uint16
+}
+
+type Table struct {
+	ID        uint64
+	Name      string
+	Schema    Schema
+	tree      *BTree
+	firstData uint64
+	lastData  uint64
+	nextRowID int64
+	catalog   CatalogPointer
+}
+
+func catalogSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[catalogSlotCountOffset : catalogSlotCountOffset+2]))
+}
+
+func setCatalogSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[catalogSlotCountOffset:catalogSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+
+func catalogNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[catalogNextPageOffset : catalogNextPageOffset+8])
+}
+
+func setCatalogNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[catalogNextPageOffset:catalogNextPageOffset+8], n)
+	page.MarkDirty()
+}
+
+func catalogEntryRange(slot int) (int, int, error) {
+	if slot &lt; 0 || slot &gt;= CatalogSlotsPerPage {
+		return 0, 0, fmt.Errorf("catalog slot %d out of range", slot)
+	}
+	start := catalogEntriesOffset + slot*CatalogEntrySize
+	return start, start + CatalogEntrySize, nil
+}
+
+func writeCatalogEntry(page *Page, slot int, t *Table) error {
+	if page.Type != PageTypeCatalog {
+		return fmt.Errorf("page %d is %s, expected catalog", page.Number, page.Type)
+	}
+	if len([]byte(t.Name)) == 0 || len([]byte(t.Name)) &gt; MaxTableNameLen {
+		return fmt.Errorf("table name must be 1..%d bytes", MaxTableNameLen)
+	}
+	if len(t.Schema.Columns) &gt; MaxColumns {
+		return fmt.Errorf("table %s has too many columns", t.Name)
+	}
+	start, end, err := catalogEntryRange(slot)
+	if err != nil {
+		return err
+	}
+	entry := page.Data[start:end]
+	clear(entry)
+	entry[catalogActiveOffset] = 1
+	entry[catalogNameLenOffset] = byte(len([]byte(t.Name)))
+	entry[catalogColumnCountOff] = byte(len(t.Schema.Columns))
+	binary.LittleEndian.PutUint32(entry[catalogRowSizeOffset:catalogRowSizeOffset+4], t.Schema.RowSize)
+	binary.LittleEndian.PutUint64(entry[catalogTableIDOffset:catalogTableIDOffset+8], t.ID)
+	binary.LittleEndian.PutUint64(entry[catalogRootPageOffset:catalogRootPageOffset+8], t.tree.RootPage())
+	binary.LittleEndian.PutUint64(entry[catalogFirstDataOffset:catalogFirstDataOffset+8], t.firstData)
+	binary.LittleEndian.PutUint64(entry[catalogLastDataOffset:catalogLastDataOffset+8], t.lastData)
+	binary.LittleEndian.PutUint64(entry[catalogNextRowIDOffset:catalogNextRowIDOffset+8], uint64(t.nextRowID))
+	copy(entry[catalogNameOffset:catalogNameOffset+MaxTableNameLen], []byte(t.Name))
+
+	for i, c := range t.Schema.Columns {
+		off := catalogColumnsOffset + i*catalogColumnSize
+		col := entry[off : off+catalogColumnSize]
+		col[catalogColTypeOffset] = byte(c.Type)
+		if c.Nullable {
+			col[catalogColNullableOff] = 1
+		}
+		col[catalogColNameLenOffset] = byte(len([]byte(c.Name)))
+		binary.LittleEndian.PutUint16(col[catalogColMaxLenOffset:catalogColMaxLenOffset+2], c.MaxLen)
+		binary.LittleEndian.PutUint16(col[catalogColRowOffOffset:catalogColRowOffOffset+2], c.Offset)
+		binary.LittleEndian.PutUint16(col[catalogColWidthOffset:catalogColWidthOffset+2], c.Width)
+		copy(col[catalogColNameOffset:catalogColNameOffset+MaxColumnNameLen], []byte(c.Name))
+	}
+	page.MarkDirty()
+	return nil
+}
+
+func readCatalogEntry(page *Page, slot int) (*Table, error) {
+	start, end, err := catalogEntryRange(slot)
+	if err != nil {
+		return nil, err
+	}
+	entry := page.Data[start:end]
+	if entry[catalogActiveOffset] == 0 {
+		return nil, nil
+	}
+	nameLen := int(entry[catalogNameLenOffset])
+	if nameLen &lt; 1 || nameLen &gt; MaxTableNameLen {
+		return nil, fmt.Errorf("catalog page %d slot %d has invalid table-name length %d", page.Number, slot, nameLen)
+	}
+	columnCount := int(entry[catalogColumnCountOff])
+	if columnCount &lt; 1 || columnCount &gt; MaxColumns {
+		return nil, fmt.Errorf("catalog page %d slot %d has invalid column count %d", page.Number, slot, columnCount)
+	}
+	name := string(entry[catalogNameOffset : catalogNameOffset+nameLen])
+	columns := make([]Column, 0, columnCount)
+	for i := 0; i &lt; columnCount; i++ {
+		off := catalogColumnsOffset + i*catalogColumnSize
+		col := entry[off : off+catalogColumnSize]
+		colNameLen := int(col[catalogColNameLenOffset])
+		if colNameLen &lt; 1 || colNameLen &gt; MaxColumnNameLen {
+			return nil, fmt.Errorf("catalog table %s column %d has invalid name length %d", name, i, colNameLen)
+		}
+		c := Column{
+			Name:     string(col[catalogColNameOffset : catalogColNameOffset+colNameLen]),
+			Type:     ColumnType(col[catalogColTypeOffset]),
+			Nullable: col[catalogColNullableOff] != 0,
+			MaxLen:   binary.LittleEndian.Uint16(col[catalogColMaxLenOffset : catalogColMaxLenOffset+2]),
+			Offset:   binary.LittleEndian.Uint16(col[catalogColRowOffOffset : catalogColRowOffOffset+2]),
+			Width:    binary.LittleEndian.Uint16(col[catalogColWidthOffset : catalogColWidthOffset+2]),
+		}
+		if _, err := columnWidth(c); err != nil {
+			return nil, fmt.Errorf("catalog table %s column %s: %w", name, c.Name, err)
+		}
+		columns = append(columns, c)
+	}
+	schema := Schema{Columns: columns, RowSize: binary.LittleEndian.Uint32(entry[catalogRowSizeOffset : catalogRowSizeOffset+4])}
+	compiled, err := CompileSchema(columns)
+	if err != nil {
+		return nil, fmt.Errorf("catalog table %s schema invalid: %w", name, err)
+	}
+	if compiled.RowSize != schema.RowSize {
+		return nil, fmt.Errorf("catalog table %s row size %d does not match compiled size %d", name, schema.RowSize, compiled.RowSize)
+	}
+	for i := range compiled.Columns {
+		if compiled.Columns[i].Offset != schema.Columns[i].Offset || compiled.Columns[i].Width != schema.Columns[i].Width {
+			return nil, fmt.Errorf("catalog table %s column %s layout mismatch", name, schema.Columns[i].Name)
+		}
+	}
+	t := &amp;Table{
+		ID:        binary.LittleEndian.Uint64(entry[catalogTableIDOffset : catalogTableIDOffset+8]),
+		Name:      name,
+		Schema:    schema,
+		firstData: binary.LittleEndian.Uint64(entry[catalogFirstDataOffset : catalogFirstDataOffset+8]),
+		lastData:  binary.LittleEndian.Uint64(entry[catalogLastDataOffset : catalogLastDataOffset+8]),
+		nextRowID: int64(binary.LittleEndian.Uint64(entry[catalogNextRowIDOffset : catalogNextRowIDOffset+8])),
+		catalog:   CatalogPointer{Page: page.Number, Slot: uint16(slot)},
+	}
+	root := binary.LittleEndian.Uint64(entry[catalogRootPageOffset : catalogRootPageOffset+8])
+	if t.ID == 0 || root == 0 || t.nextRowID &lt; 1 {
+		return nil, fmt.Errorf("catalog table %s has invalid id/root/next-rowid", name)
+	}
+	if (t.firstData == 0) != (t.lastData == 0) {
+		return nil, fmt.Errorf("catalog table %s data chain metadata disagrees", name)
+	}
+	t.tree = newBTree(nil, root) // pager is attached by Store after catalog loading.
+	return t, nil
+}
+
+func normalizeTableName(name string) string { return strings.ToLower(name) }
+</code></pre><h3>store.go</h3><pre><code>package main
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+const (
+	DatabaseMagic   = "MINIDB05"
+	DatabaseVersion = uint32(5)
+	HeaderPage      = uint64(0)
+
+	metaMagicOffset          = PageHeaderSize
+	metaVersionOffset        = metaMagicOffset + 8
+	metaPageSizeOffset       = metaVersionOffset + 4
+	metaPageHeaderSizeOffset = metaPageSizeOffset + 4
+	metaChecksumAlgOffset    = metaPageHeaderSizeOffset + 4
+	metaFirstCatalogOffset   = 64
+	metaLastCatalogOffset    = 72
+	metaNextTableIDOffset    = 80
+	metaTableCountOffset     = 88
+
+	dataTableIDOffset   = PageHeaderSize
+	dataSlotCountOffset = 40
+	dataRowSizeOffset   = 44
+	dataNextPageOffset  = 48
+	dataRowsOffset      = 64
+)
+
+var (
+	ErrNotFound = errors.New("record not found")
+	ErrDeleted  = errors.New("record deleted")
+)
+
+type Store struct {
+	pager            *Pager
+	tables           map[string]*Table
+	firstCatalogPage uint64
+	lastCatalogPage  uint64
+	nextTableID      uint64
+	tableCount       uint64
+}
+
+func writeDatabaseMetadata(page *Page, firstCatalog, lastCatalog, nextTableID, tableCount uint64) {
+	clear(page.Data[PageHeaderSize:])
+	copy(page.Data[metaMagicOffset:metaMagicOffset+8], []byte(DatabaseMagic))
+	binary.LittleEndian.PutUint32(page.Data[metaVersionOffset:metaVersionOffset+4], DatabaseVersion)
+	binary.LittleEndian.PutUint32(page.Data[metaPageSizeOffset:metaPageSizeOffset+4], PageSize)
+	binary.LittleEndian.PutUint32(page.Data[metaPageHeaderSizeOffset:metaPageHeaderSizeOffset+4], PageHeaderSize)
+	binary.LittleEndian.PutUint32(page.Data[metaChecksumAlgOffset:metaChecksumAlgOffset+4], ChecksumAlgorithm)
+	binary.LittleEndian.PutUint64(page.Data[metaFirstCatalogOffset:metaFirstCatalogOffset+8], firstCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaLastCatalogOffset:metaLastCatalogOffset+8], lastCatalog)
+	binary.LittleEndian.PutUint64(page.Data[metaNextTableIDOffset:metaNextTableIDOffset+8], nextTableID)
+	binary.LittleEndian.PutUint64(page.Data[metaTableCountOffset:metaTableCountOffset+8], tableCount)
+	page.MarkDirty()
+}
+
+func readDatabaseMetadata(page *Page) (firstCatalog, lastCatalog, nextTableID, tableCount uint64, err error) {
+	if page.Type != PageTypeMetadata {
+		err = fmt.Errorf("page 0 is %s, expected metadata", page.Type)
+		return
+	}
+	if string(page.Data[metaMagicOffset:metaMagicOffset+8]) != DatabaseMagic {
+		err = fmt.Errorf("not a compatible MiniDB file: bad database magic")
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaVersionOffset : metaVersionOffset+4]); got != DatabaseVersion {
+		err = fmt.Errorf("unsupported database version %d", got)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageSizeOffset : metaPageSizeOffset+4]); got != PageSize {
+		err = fmt.Errorf("file page size is %d, program expects %d", got, PageSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageHeaderSizeOffset : metaPageHeaderSizeOffset+4]); got != PageHeaderSize {
+		err = fmt.Errorf("file page-header size is %d, program expects %d", got, PageHeaderSize)
+		return
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaChecksumAlgOffset : metaChecksumAlgOffset+4]); got != ChecksumAlgorithm {
+		err = fmt.Errorf("unsupported checksum algorithm %d", got)
+		return
+	}
+	firstCatalog = binary.LittleEndian.Uint64(page.Data[metaFirstCatalogOffset : metaFirstCatalogOffset+8])
+	lastCatalog = binary.LittleEndian.Uint64(page.Data[metaLastCatalogOffset : metaLastCatalogOffset+8])
+	nextTableID = binary.LittleEndian.Uint64(page.Data[metaNextTableIDOffset : metaNextTableIDOffset+8])
+	tableCount = binary.LittleEndian.Uint64(page.Data[metaTableCountOffset : metaTableCountOffset+8])
+	if firstCatalog == 0 || lastCatalog == 0 || nextTableID == 0 {
+		err = fmt.Errorf("invalid catalog metadata: first=%d last=%d nextTableID=%d", firstCatalog, lastCatalog, nextTableID)
+	}
+	return
+}
+
+func initializeCatalogPage(page *Page) error {
+	if page.Type != PageTypeCatalog {
+		return fmt.Errorf("page %d is %s, expected catalog", page.Number, page.Type)
+	}
+	setCatalogSlotCount(page, 0)
+	setCatalogNextPage(page, 0)
+	return nil
+}
+
+func Open(path string) (*Store, error) {
+	pager, err := OpenPager(path)
+	if err != nil {
+		return nil, err
+	}
+	s := &amp;Store{pager: pager, tables: make(map[string]*Table)}
+
+	if pager.numPages == 0 {
+		meta, err := pager.NewPage(PageTypeMetadata)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		if meta.Number != HeaderPage {
+			pager.Close()
+			return nil, fmt.Errorf("new metadata page is %d, expected 0", meta.Number)
+		}
+		catalog, err := pager.NewPage(PageTypeCatalog)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		if err := initializeCatalogPage(catalog); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		s.firstCatalogPage = catalog.Number
+		s.lastCatalogPage = catalog.Number
+		s.nextTableID = 1
+		s.tableCount = 0
+		writeDatabaseMetadata(meta, s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount)
+		if err := pager.FlushAll(); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		return s, nil
+	}
+
+	meta, err := pager.GetPage(HeaderPage)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	first, last, nextID, count, err := readDatabaseMetadata(meta)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount = first, last, nextID, count
+	if err := s.loadCatalog(); err != nil {
+		pager.Close()
+		return nil, err
+	}
+	if uint64(len(s.tables)) != s.tableCount {
+		pager.Close()
+		return nil, fmt.Errorf("catalog says %d tables but loaded %d", s.tableCount, len(s.tables))
+	}
+	return s, nil
+}
+
+func (s *Store) loadCatalog() error {
+	seenPages := map[uint64]bool{}
+	loadedIDs := map[uint64]bool{}
+	pageNum := s.firstCatalogPage
+	var lastSeen uint64
+	for pageNum != 0 {
+		if seenPages[pageNum] {
+			return fmt.Errorf("catalog page cycle at %d", pageNum)
+		}
+		seenPages[pageNum] = true
+		page, err := s.pager.GetPage(pageNum)
+		if err != nil {
+			return err
+		}
+		if page.Type != PageTypeCatalog {
+			return fmt.Errorf("catalog chain page %d is %s", pageNum, page.Type)
+		}
+		n := catalogSlotCount(page)
+		if n &lt; 0 || n &gt; CatalogSlotsPerPage {
+			return fmt.Errorf("catalog page %d has invalid slot count %d", pageNum, n)
+		}
+		for slot := 0; slot &lt; n; slot++ {
+			t, err := readCatalogEntry(page, slot)
+			if err != nil {
+				return err
+			}
+			if t == nil {
+				return fmt.Errorf("catalog page %d slot %d is unexpectedly empty", pageNum, slot)
+			}
+			key := normalizeTableName(t.Name)
+			if _, exists := s.tables[key]; exists {
+				return fmt.Errorf("duplicate table name %q in catalog", t.Name)
+			}
+			if loadedIDs[t.ID] {
+				return fmt.Errorf("duplicate table id %d in catalog", t.ID)
+			}
+			loadedIDs[t.ID] = true
+			t.tree.pager = s.pager
+			s.tables[key] = t
+		}
+		lastSeen = pageNum
+		pageNum = catalogNextPage(page)
+	}
+	if lastSeen != s.lastCatalogPage {
+		return fmt.Errorf("catalog last-page metadata says %d but chain ends at %d", s.lastCatalogPage, lastSeen)
+	}
+	return nil
+}
+
+func (s *Store) persistMetadata() error {
+	page, err := s.pager.GetPage(HeaderPage)
+	if err != nil {
+		return err
+	}
+	writeDatabaseMetadata(page, s.firstCatalogPage, s.lastCatalogPage, s.nextTableID, s.tableCount)
+	return nil
+}
+
+func (s *Store) persistTable(t *Table) error {
+	page, err := s.pager.GetPage(t.catalog.Page)
+	if err != nil {
+		return err
+	}
+	return writeCatalogEntry(page, int(t.catalog.Slot), t)
+}
+
+func validIdentifier(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if !(r == '_' || r &gt;= 'a' &amp;&amp; r &lt;= 'z' || r &gt;= 'A' &amp;&amp; r &lt;= 'Z' || i &gt; 0 &amp;&amp; r &gt;= '0' &amp;&amp; r &lt;= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) CreateTable(name string, columns []Column) (*Table, error) {
+	if !validIdentifier(name) || len([]byte(name)) &gt; MaxTableNameLen {
+		return nil, fmt.Errorf("table name must be a simple identifier of at most %d bytes", MaxTableNameLen)
+	}
+	key := normalizeTableName(name)
+	if _, exists := s.tables[key]; exists {
+		return nil, fmt.Errorf("table %q already exists", name)
+	}
+	schema, err := CompileSchema(columns)
+	if err != nil {
+		return nil, err
+	}
+	root, err := s.pager.NewPage(PageTypeBTreeLeaf)
+	if err != nil {
+		return nil, err
+	}
+	t := &amp;Table{
+		ID:        s.nextTableID,
+		Name:      name,
+		Schema:    schema,
+		tree:      newBTree(s.pager, root.Number),
+		nextRowID: 1,
+	}
+
+	catalogPage, err := s.pager.GetPage(s.lastCatalogPage)
+	if err != nil {
+		return nil, err
+	}
+	slot := catalogSlotCount(catalogPage)
+	if slot &gt;= CatalogSlotsPerPage {
+		newPage, err := s.pager.NewPage(PageTypeCatalog)
+		if err != nil {
+			return nil, err
+		}
+		if err := initializeCatalogPage(newPage); err != nil {
+			return nil, err
+		}
+		setCatalogNextPage(catalogPage, newPage.Number)
+		s.lastCatalogPage = newPage.Number
+		catalogPage = newPage
+		slot = 0
+	}
+	t.catalog = CatalogPointer{Page: catalogPage.Number, Slot: uint16(slot)}
+	if err := writeCatalogEntry(catalogPage, slot, t); err != nil {
+		return nil, err
+	}
+	setCatalogSlotCount(catalogPage, slot+1)
+
+	s.tables[key] = t
+	s.nextTableID++
+	s.tableCount++
+	if err := s.persistMetadata(); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (s *Store) Table(name string) (*Table, error) {
+	t, ok := s.tables[normalizeTableName(name)]
+	if !ok {
+		return nil, fmt.Errorf("table %q not found", name)
+	}
+	return t, nil
+}
+
+func (s *Store) Tables() []*Table {
+	out := make([]*Table, 0, len(s.tables))
+	for _, t := range s.tables {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID &lt; out[j].ID })
+	return out
+}
+
+func dataTableID(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataTableIDOffset : dataTableIDOffset+8])
+}
+func dataSlotCount(page *Page) int {
+	return int(binary.LittleEndian.Uint16(page.Data[dataSlotCountOffset : dataSlotCountOffset+2]))
+}
+func setDataSlotCount(page *Page, n int) {
+	binary.LittleEndian.PutUint16(page.Data[dataSlotCountOffset:dataSlotCountOffset+2], uint16(n))
+	page.MarkDirty()
+}
+func dataRowSize(page *Page) uint32 {
+	return binary.LittleEndian.Uint32(page.Data[dataRowSizeOffset : dataRowSizeOffset+4])
+}
+func dataNextPage(page *Page) uint64 {
+	return binary.LittleEndian.Uint64(page.Data[dataNextPageOffset : dataNextPageOffset+8])
+}
+func setDataNextPage(page *Page, n uint64) {
+	binary.LittleEndian.PutUint64(page.Data[dataNextPageOffset:dataNextPageOffset+8], n)
+	page.MarkDirty()
+}
+func dataCapacity(rowSize uint32) int {
+	if rowSize == 0 {
+		return 0
+	}
+	return (PageSize - dataRowsOffset) / int(rowSize)
+}
+
+func initializeDataPage(page *Page, t *Table) error {
+	if page.Type != PageTypeData {
+		return fmt.Errorf("page %d is %s, expected data", page.Number, page.Type)
+	}
+	binary.LittleEndian.PutUint64(page.Data[dataTableIDOffset:dataTableIDOffset+8], t.ID)
+	binary.LittleEndian.PutUint32(page.Data[dataRowSizeOffset:dataRowSizeOffset+4], t.Schema.RowSize)
+	setDataSlotCount(page, 0)
+	setDataNextPage(page, 0)
+	page.MarkDirty()
+	return nil
+}
+
+func validateDataPage(page *Page, t *Table) error {
+	if page.Type != PageTypeData {
+		return fmt.Errorf("page %d is %s, expected data", page.Number, page.Type)
+	}
+	if got := dataTableID(page); got != t.ID {
+		return fmt.Errorf("data page %d belongs to table id %d, expected %d", page.Number, got, t.ID)
+	}
+	if got := dataRowSize(page); got != t.Schema.RowSize {
+		return fmt.Errorf("data page %d row size is %d, table %s expects %d", page.Number, got, t.Name, t.Schema.RowSize)
+	}
+	count := dataSlotCount(page)
+	if count &lt; 0 || count &gt; dataCapacity(t.Schema.RowSize) {
+		return fmt.Errorf("data page %d has invalid slot count %d", page.Number, count)
+	}
+	return nil
+}
+
+func (s *Store) allocateDataPage(t *Table) (*Page, error) {
+	page, err := s.pager.NewPage(PageTypeData)
+	if err != nil {
+		return nil, err
+	}
+	if err := initializeDataPage(page, t); err != nil {
+		return nil, err
+	}
+	if t.lastData != 0 {
+		last, err := s.pager.GetPage(t.lastData)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDataPage(last, t); err != nil {
+			return nil, err
+		}
+		setDataNextPage(last, page.Number)
+	} else {
+		t.firstData = page.Number
+	}
+	t.lastData = page.Number
+	return page, nil
+}
+
+func rowRange(t *Table, slot int) (int, int, error) {
+	cap := dataCapacity(t.Schema.RowSize)
+	if slot &lt; 0 || slot &gt;= cap {
+		return 0, 0, fmt.Errorf("slot %d out of range for table %s", slot, t.Name)
+	}
+	start := dataRowsOffset + slot*int(t.Schema.RowSize)
+	return start, start + int(t.Schema.RowSize), nil
+}
+
+func (s *Store) appendRow(t *Table, encoded []byte) (RecordPointer, error) {
+	if len(encoded) != int(t.Schema.RowSize) {
+		return RecordPointer{}, fmt.Errorf("encoded row has %d bytes, expected %d", len(encoded), t.Schema.RowSize)
+	}
+	var page *Page
+	var err error
+	if t.lastData == 0 {
+		page, err = s.allocateDataPage(t)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+	} else {
+		page, err = s.pager.GetPage(t.lastData)
+		if err != nil {
+			return RecordPointer{}, err
+		}
+		if err := validateDataPage(page, t); err != nil {
+			return RecordPointer{}, err
+		}
+		if dataSlotCount(page) &gt;= dataCapacity(t.Schema.RowSize) {
+			page, err = s.allocateDataPage(t)
+			if err != nil {
+				return RecordPointer{}, err
+			}
+		}
+	}
+	slot := dataSlotCount(page)
+	start, end, err := rowRange(t, slot)
+	if err != nil {
+		return RecordPointer{}, err
+	}
+	copy(page.Data[start:end], encoded)
+	setDataSlotCount(page, slot+1)
+	page.MarkDirty()
+	return RecordPointer{Page: page.Number, Slot: uint16(slot)}, nil
+}
+
+func (s *Store) readRowAt(t *Table, ptr RecordPointer) (Row, *Page, int, error) {
+	page, err := s.pager.GetPage(ptr.Page)
+	if err != nil {
+		return Row{}, nil, 0, err
+	}
+	if err := validateDataPage(page, t); err != nil {
+		return Row{}, nil, 0, err
+	}
+	if int(ptr.Slot) &gt;= dataSlotCount(page) {
+		return Row{}, nil, 0, fmt.Errorf("pointer %d:%d is past used slots", ptr.Page, ptr.Slot)
+	}
+	start, end, err := rowRange(t, int(ptr.Slot))
+	if err != nil {
+		return Row{}, nil, 0, err
+	}
+	row, err := DecodeRow(t.Schema, page.Data[start:end])
+	return row, page, start, err
+}
+
+func (s *Store) Insert(tableName string, values []Value) (int64, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return 0, err
+	}
+	rowID := t.nextRowID
+	encoded, err := EncodeRow(t.Schema, rowID, values)
+	if err != nil {
+		return 0, err
+	}
+	ptr, err := s.appendRow(t, encoded)
+	if err != nil {
+		return 0, err
+	}
+	if err := t.tree.Insert(rowID, ptr); err != nil {
+		return 0, err
+	}
+	t.nextRowID++
+	if err := s.persistTable(t); err != nil {
+		return 0, err
+	}
+	return rowID, nil
+}
+
+func (s *Store) Get(tableName string, rowID int64) (Row, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return Row{}, err
+	}
+	ptr, _, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return Row{}, err
+	}
+	row, _, _, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return Row{}, err
+	}
+	if row.RowID != rowID {
+		return Row{}, fmt.Errorf("index key %d points to rowid %d", rowID, row.RowID)
+	}
+	if row.Deleted {
+		return Row{}, ErrDeleted
+	}
+	return row, nil
+}
+
+func (s *Store) GetWithSteps(tableName string, rowID int64) (Row, int, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return Row{}, 0, err
+	}
+	ptr, steps, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return Row{}, steps, err
+	}
+	row, _, _, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return Row{}, steps, err
+	}
+	if row.RowID != rowID {
+		return Row{}, steps, fmt.Errorf("index key %d points to rowid %d", rowID, row.RowID)
+	}
+	if row.Deleted {
+		return Row{}, steps, ErrDeleted
+	}
+	return row, steps, nil
+}
+
+func (s *Store) Scan(tableName string) ([]Row, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	ptrs, err := t.tree.AllPointers()
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]Row, 0, len(ptrs))
+	for _, ptr := range ptrs {
+		row, _, _, err := s.readRowAt(t, ptr)
+		if err != nil {
+			return nil, err
+		}
+		if row.Deleted {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func (s *Store) Delete(tableName string, rowID int64) error {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return err
+	}
+	ptr, _, err := t.tree.Lookup(rowID)
+	if err != nil {
+		return err
+	}
+	row, page, start, err := s.readRowAt(t, ptr)
+	if err != nil {
+		return err
+	}
+	if row.Deleted {
+		return ErrDeleted
+	}
+	page.Data[start] |= 1
+	page.MarkDirty()
+	return nil
+}
+
+func (s *Store) TreeDump(tableName string) (string, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return "", err
+	}
+	return t.tree.Dump()
+}
+
+func (s *Store) DataChain(tableName string) ([]uint64, error) {
+	t, err := s.Table(tableName)
+	if err != nil {
+		return nil, err
+	}
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := t.firstData; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("data-page cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateDataPage(page, t); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+		p = dataNextPage(page)
+	}
+	if len(out) == 0 &amp;&amp; t.lastData != 0 {
+		return nil, fmt.Errorf("table %s has last data page but empty chain", t.Name)
+	}
+	if len(out) &gt; 0 &amp;&amp; out[len(out)-1] != t.lastData {
+		return nil, fmt.Errorf("table %s last data metadata says %d but chain ends at %d", t.Name, t.lastData, out[len(out)-1])
+	}
+	return out, nil
+}
+
+func (s *Store) CatalogPages() ([]uint64, error) {
+	var out []uint64
+	seen := map[uint64]bool{}
+	for p := s.firstCatalogPage; p != 0; {
+		if seen[p] {
+			return nil, fmt.Errorf("catalog cycle at %d", p)
+		}
+		seen[p] = true
+		page, err := s.pager.GetPage(p)
+		if err != nil {
+			return nil, err
+		}
+		if page.Type != PageTypeCatalog {
+			return nil, fmt.Errorf("catalog chain page %d is %s", p, page.Type)
+		}
+		out = append(out, p)
+		p = catalogNextPage(page)
+	}
+	return out, nil
+}
+
+func (s *Store) Stats() PagerStats { return s.pager.Stats() }
+func (s *Store) Flush() error      { return s.pager.FlushAll() }
+func (s *Store) Verify() (uint64, error) {
+	return s.pager.VerifyAll()
+}
+func (s *Store) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	return s.pager.PageInfo(pageNum)
+}
+func (s *Store) Close() error { return s.pager.Close() }
+
+func describeColumn(c Column) string {
+	typ := c.Type.String()
+	if c.Type == TypeText {
+		typ = fmt.Sprintf("TEXT(%d)", c.MaxLen)
+	}
+	nullability := "NOT NULL"
+	if c.Nullable {
+		nullability = "NULL"
+	}
+	return fmt.Sprintf("%s %s %s offset=%d width=%d", c.Name, typ, nullability, c.Offset, c.Width)
+}
+
+func (s *Store) DescribeTable(name string) (string, error) {
+	t, err := s.Table(name)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&amp;b, "table=%s id=%d row_size=%d rows_per_page=%d root_page=%d next_rowid=%d\n", t.Name, t.ID, t.Schema.RowSize, dataCapacity(t.Schema.RowSize), t.tree.RootPage(), t.nextRowID)
+	b.WriteString("rowid INT (implicit key)\n")
+	for i, c := range t.Schema.Columns {
+		fmt.Fprintf(&amp;b, "%d %s\n", i, describeColumn(c))
+	}
+	return b.String(), nil
+}
+</code></pre><h3>lexer.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type TokenKind int
+
+const (
+	TokenEOF TokenKind = iota
+	TokenIdentifier
+	TokenNumber
+	TokenString
+	TokenComma
+	TokenLParen
+	TokenRParen
+	TokenSemicolon
+	TokenStar
+	TokenEqual
+	TokenCreate
+	TokenTable
+	TokenInsert
+	TokenInto
+	TokenValues
+	TokenSelect
+	TokenFrom
+	TokenWhere
+	TokenDelete
+	TokenInt
+	TokenBool
+	TokenText
+	TokenNull
+	TokenNot
+	TokenTrue
+	TokenFalse
+)
+
+func (k TokenKind) String() string {
+	names := map[TokenKind]string{
+		TokenEOF: "EOF", TokenIdentifier: "IDENT", TokenNumber: "NUMBER", TokenString: "STRING",
+		TokenComma: "COMMA", TokenLParen: "LPAREN", TokenRParen: "RPAREN", TokenSemicolon: "SEMICOLON",
+		TokenStar: "STAR", TokenEqual: "EQUAL", TokenCreate: "CREATE", TokenTable: "TABLE",
+		TokenInsert: "INSERT", TokenInto: "INTO", TokenValues: "VALUES", TokenSelect: "SELECT",
+		TokenFrom: "FROM", TokenWhere: "WHERE", TokenDelete: "DELETE", TokenInt: "INT",
+		TokenBool: "BOOL", TokenText: "TEXT", TokenNull: "NULL", TokenNot: "NOT",
+		TokenTrue: "TRUE", TokenFalse: "FALSE",
+	}
+	if s, ok := names[k]; ok {
+		return s
+	}
+	return fmt.Sprintf("TOKEN(%d)", int(k))
+}
+
+type Token struct {
+	Kind   TokenKind
+	Lexeme string
+	Pos    int
+}
+
+var keywords = map[string]TokenKind{
+	"CREATE": TokenCreate, "TABLE": TokenTable, "INSERT": TokenInsert, "INTO": TokenInto,
+	"VALUES": TokenValues, "SELECT": TokenSelect, "FROM": TokenFrom, "WHERE": TokenWhere,
+	"DELETE": TokenDelete, "INT": TokenInt, "INTEGER": TokenInt, "BOOL": TokenBool,
+	"BOOLEAN": TokenBool, "TEXT": TokenText, "NULL": TokenNull, "NOT": TokenNot,
+	"TRUE": TokenTrue, "FALSE": TokenFalse,
+}
+
+type Lexer struct {
+	input string
+	pos   int
+}
+
+func Lex(input string) ([]Token, error) {
+	l := &amp;Lexer{input: input}
+	var tokens []Token
+	for {
+		tok, err := l.nextToken()
+		if err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, tok)
+		if tok.Kind == TokenEOF {
+			return tokens, nil
+		}
+	}
+}
+
+func (l *Lexer) nextToken() (Token, error) {
+	for l.pos &lt; len(l.input) &amp;&amp; isSpace(l.input[l.pos]) {
+		l.pos++
+	}
+	if l.pos &gt;= len(l.input) {
+		return Token{Kind: TokenEOF, Pos: l.pos}, nil
+	}
+
+	start := l.pos
+	ch := l.input[l.pos]
+	switch ch {
+	case ',':
+		l.pos++
+		return Token{Kind: TokenComma, Lexeme: ",", Pos: start}, nil
+	case '(':
+		l.pos++
+		return Token{Kind: TokenLParen, Lexeme: "(", Pos: start}, nil
+	case ')':
+		l.pos++
+		return Token{Kind: TokenRParen, Lexeme: ")", Pos: start}, nil
+	case ';':
+		l.pos++
+		return Token{Kind: TokenSemicolon, Lexeme: ";", Pos: start}, nil
+	case '*':
+		l.pos++
+		return Token{Kind: TokenStar, Lexeme: "*", Pos: start}, nil
+	case '=':
+		l.pos++
+		return Token{Kind: TokenEqual, Lexeme: "=", Pos: start}, nil
+	case '\'':
+		return l.lexString()
+	}
+
+	if isDigit(ch) || (ch == '-' &amp;&amp; l.pos+1 &lt; len(l.input) &amp;&amp; isDigit(l.input[l.pos+1])) {
+		if ch == '-' {
+			l.pos++
+		}
+		for l.pos &lt; len(l.input) &amp;&amp; isDigit(l.input[l.pos]) {
+			l.pos++
+		}
+		return Token{Kind: TokenNumber, Lexeme: l.input[start:l.pos], Pos: start}, nil
+	}
+	if isIdentStart(ch) {
+		l.pos++
+		for l.pos &lt; len(l.input) &amp;&amp; isIdentContinue(l.input[l.pos]) {
+			l.pos++
+		}
+		word := l.input[start:l.pos]
+		if kind, ok := keywords[strings.ToUpper(word)]; ok {
+			return Token{Kind: kind, Lexeme: word, Pos: start}, nil
+		}
+		return Token{Kind: TokenIdentifier, Lexeme: word, Pos: start}, nil
+	}
+	return Token{}, fmt.Errorf("lex error at byte %d: unexpected character %q", start, ch)
+}
+
+func (l *Lexer) lexString() (Token, error) {
+	start := l.pos
+	l.pos++
+	var b strings.Builder
+	for l.pos &lt; len(l.input) {
+		ch := l.input[l.pos]
+		if ch == '\'' {
+			if l.pos+1 &lt; len(l.input) &amp;&amp; l.input[l.pos+1] == '\'' {
+				b.WriteByte('\'')
+				l.pos += 2
+				continue
+			}
+			l.pos++
+			return Token{Kind: TokenString, Lexeme: b.String(), Pos: start}, nil
+		}
+		b.WriteByte(ch)
+		l.pos++
+	}
+	return Token{}, fmt.Errorf("lex error at byte %d: unterminated string literal", start)
+}
+
+func isSpace(ch byte) bool { return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' }
+func isDigit(ch byte) bool { return ch &gt;= '0' &amp;&amp; ch &lt;= '9' }
+func isIdentStart(ch byte) bool {
+	return ch == '_' || (ch &gt;= 'a' &amp;&amp; ch &lt;= 'z') || (ch &gt;= 'A' &amp;&amp; ch &lt;= 'Z')
+}
+func isIdentContinue(ch byte) bool { return isIdentStart(ch) || isDigit(ch) }
+</code></pre><h3>parser.go</h3><pre><code>package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type Statement interface{ statementNode() }
+type Expr interface{ exprNode() }
+
+type TypeSpec struct {
+	Type    ColumnType
+	TextLen uint16
+}
+type ColumnDef struct {
+	Name     string
+	Type     TypeSpec
+	Nullable bool
+}
+
+type CreateTableStmt struct {
+	Name    string
+	Columns []ColumnDef
+}
+
+func (*CreateTableStmt) statementNode() {}
+
+type LiteralKind int
+
+const (
+	LiteralInt LiteralKind = iota + 1
+	LiteralString
+	LiteralBool
+	LiteralNull
+)
+
+type Literal struct {
+	Kind LiteralKind
+	Int  int64
+	Text string
+	Bool bool
+}
+
+type InsertStmt struct {
+	Table  string
+	Values []Literal
+}
+
+func (*InsertStmt) statementNode() {}
+
+type SelectStmt struct {
+	All     bool
+	Columns []string
+	Table   string
+	Where   Expr
+}
+
+func (*SelectStmt) statementNode() {}
+
+type DeleteStmt struct {
+	Table string
+	Where Expr
+}
+
+func (*DeleteStmt) statementNode() {}
+
+type IdentifierExpr struct{ Name string }
+
+func (*IdentifierExpr) exprNode() {}
+
+type LiteralExpr struct{ Value Literal }
+
+func (*LiteralExpr) exprNode() {}
+
+type BinaryExpr struct {
+	Left     Expr
+	Operator TokenKind
+	Right    Expr
+}
+
+func (*BinaryExpr) exprNode() {}
+
+type Parser struct {
+	tokens []Token
+	pos    int
+}
+
+func ParseSQL(input string) (Statement, error) {
+	tokens, err := Lex(input)
+	if err != nil {
+		return nil, err
+	}
+	return NewParser(tokens).ParseStatement()
+}
+func NewParser(tokens []Token) *Parser { return &amp;Parser{tokens: tokens} }
+
+func (p *Parser) ParseStatement() (Statement, error) {
+	var stmt Statement
+	var err error
+	switch p.peek().Kind {
+	case TokenCreate:
+		stmt, err = p.parseCreateTable()
+	case TokenInsert:
+		stmt, err = p.parseInsert()
+	case TokenSelect:
+		stmt, err = p.parseSelect()
+	case TokenDelete:
+		stmt, err = p.parseDelete()
+	default:
+		return nil, p.errorf(p.peek(), "expected CREATE, INSERT, SELECT, or DELETE")
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.match(TokenSemicolon)
+	if p.peek().Kind != TokenEOF {
+		return nil, p.errorf(p.peek(), "unexpected token after statement")
+	}
+	return stmt, nil
+}
+
+func (p *Parser) parseCreateTable() (Statement, error) {
+	p.advance() // CREATE
+	if _, err := p.expect(TokenTable, "expected TABLE after CREATE"); err != nil {
+		return nil, err
+	}
+	name, err := p.expect(TokenIdentifier, "expected table name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenLParen, "expected '(' after table name"); err != nil {
+		return nil, err
+	}
+	var columns []ColumnDef
+	for {
+		colName, err := p.expect(TokenIdentifier, "expected column name")
+		if err != nil {
+			return nil, err
+		}
+		typeSpec, err := p.parseTypeSpec()
+		if err != nil {
+			return nil, err
+		}
+		nullable := true // SQL columns are nullable unless constrained NOT NULL.
+		if p.match(TokenNot) {
+			if _, err := p.expect(TokenNull, "expected NULL after NOT"); err != nil {
+				return nil, err
+			}
+			nullable = false
+		} else if p.match(TokenNull) {
+			nullable = true
+		}
+		columns = append(columns, ColumnDef{Name: colName.Lexeme, Type: typeSpec, Nullable: nullable})
+		if p.match(TokenComma) {
+			continue
+		}
+		break
+	}
+	if _, err := p.expect(TokenRParen, "expected ')' after column definitions"); err != nil {
+		return nil, err
+	}
+	return &amp;CreateTableStmt{Name: name.Lexeme, Columns: columns}, nil
+}
+
+func (p *Parser) parseTypeSpec() (TypeSpec, error) {
+	tok := p.advance()
+	switch tok.Kind {
+	case TokenInt:
+		return TypeSpec{Type: TypeInt64}, nil
+	case TokenBool:
+		return TypeSpec{Type: TypeBool}, nil
+	case TokenText:
+		if _, err := p.expect(TokenLParen, "expected '(' after TEXT"); err != nil {
+			return TypeSpec{}, err
+		}
+		nTok, err := p.expect(TokenNumber, "expected maximum length inside TEXT(...)")
+		if err != nil {
+			return TypeSpec{}, err
+		}
+		n, err := strconv.Atoi(nTok.Lexeme)
+		if err != nil || n &lt; 1 || n &gt; MaxTextLen {
+			return TypeSpec{}, p.errorf(nTok, "TEXT length must be 1..%d", MaxTextLen)
+		}
+		if _, err := p.expect(TokenRParen, "expected ')' after TEXT length"); err != nil {
+			return TypeSpec{}, err
+		}
+		return TypeSpec{Type: TypeText, TextLen: uint16(n)}, nil
+	default:
+		return TypeSpec{}, p.errorf(tok, "expected INT, BOOL, or TEXT(n)")
+	}
+}
+
+func (p *Parser) parseInsert() (Statement, error) {
+	p.advance() // INSERT
+	if _, err := p.expect(TokenInto, "expected INTO after INSERT"); err != nil {
+		return nil, err
+	}
+	table, err := p.expect(TokenIdentifier, "expected table name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenValues, "expected VALUES after table name"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenLParen, "expected '(' after VALUES"); err != nil {
+		return nil, err
+	}
+	var values []Literal
+	if p.peek().Kind != TokenRParen {
+		for {
+			v, err := p.parseLiteral()
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, v)
+			if p.match(TokenComma) {
+				continue
+			}
+			break
+		}
+	}
+	if _, err := p.expect(TokenRParen, "expected ')' after VALUES list"); err != nil {
+		return nil, err
+	}
+	return &amp;InsertStmt{Table: table.Lexeme, Values: values}, nil
+}
+
+func (p *Parser) parseSelect() (Statement, error) {
+	p.advance() // SELECT
+	stmt := &amp;SelectStmt{}
+	if p.match(TokenStar) {
+		stmt.All = true
+	} else {
+		for {
+			name, err := p.expect(TokenIdentifier, "expected column name or '*'")
+			if err != nil {
+				return nil, err
+			}
+			stmt.Columns = append(stmt.Columns, name.Lexeme)
+			if p.match(TokenComma) {
+				continue
+			}
+			break
+		}
+	}
+	if _, err := p.expect(TokenFrom, "expected FROM after SELECT list"); err != nil {
+		return nil, err
+	}
+	table, err := p.expect(TokenIdentifier, "expected table name after FROM")
+	if err != nil {
+		return nil, err
+	}
+	stmt.Table = table.Lexeme
+	if p.match(TokenWhere) {
+		expr, err := p.parseEquality()
+		if err != nil {
+			return nil, err
+		}
+		stmt.Where = expr
+	}
+	return stmt, nil
+}
+
+func (p *Parser) parseDelete() (Statement, error) {
+	p.advance() // DELETE
+	if _, err := p.expect(TokenFrom, "expected FROM after DELETE"); err != nil {
+		return nil, err
+	}
+	table, err := p.expect(TokenIdentifier, "expected table name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenWhere, "Part 6 DELETE requires a WHERE clause"); err != nil {
+		return nil, err
+	}
+	expr, err := p.parseEquality()
+	if err != nil {
+		return nil, err
+	}
+	return &amp;DeleteStmt{Table: table.Lexeme, Where: expr}, nil
+}
+
+func (p *Parser) parseEquality() (Expr, error) {
+	leftTok, err := p.expect(TokenIdentifier, "expected column name on left side of WHERE")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(TokenEqual, "Part 6 supports only '=' comparisons"); err != nil {
+		return nil, err
+	}
+	lit, err := p.parseLiteral()
+	if err != nil {
+		return nil, err
+	}
+	return &amp;BinaryExpr{Left: &amp;IdentifierExpr{Name: leftTok.Lexeme}, Operator: TokenEqual, Right: &amp;LiteralExpr{Value: lit}}, nil
+}
+
+func (p *Parser) parseLiteral() (Literal, error) {
+	tok := p.advance()
+	switch tok.Kind {
+	case TokenNumber:
+		n, err := strconv.ParseInt(tok.Lexeme, 10, 64)
+		if err != nil {
+			return Literal{}, p.errorf(tok, "integer is outside int64 range")
+		}
+		return Literal{Kind: LiteralInt, Int: n}, nil
+	case TokenString:
+		return Literal{Kind: LiteralString, Text: tok.Lexeme}, nil
+	case TokenTrue:
+		return Literal{Kind: LiteralBool, Bool: true}, nil
+	case TokenFalse:
+		return Literal{Kind: LiteralBool, Bool: false}, nil
+	case TokenNull:
+		return Literal{Kind: LiteralNull}, nil
+	default:
+		return Literal{}, p.errorf(tok, "expected literal value")
+	}
+}
+
+func (p *Parser) peek() Token {
+	if p.pos &gt;= len(p.tokens) {
+		return Token{Kind: TokenEOF}
+	}
+	return p.tokens[p.pos]
+}
+func (p *Parser) advance() Token {
+	tok := p.peek()
+	if p.pos &lt; len(p.tokens) {
+		p.pos++
+	}
+	return tok
+}
+func (p *Parser) match(kind TokenKind) bool {
+	if p.peek().Kind == kind {
+		p.pos++
+		return true
+	}
+	return false
+}
+func (p *Parser) expect(kind TokenKind, message string) (Token, error) {
+	if p.peek().Kind != kind {
+		return Token{}, p.errorf(p.peek(), message)
+	}
+	return p.advance(), nil
+}
+func (p *Parser) errorf(tok Token, format string, args ...any) error {
+	return fmt.Errorf("parse error at byte %d near %q: %s", tok.Pos, tok.Lexeme, fmt.Sprintf(format, args...))
+}
+
+func DescribeAST(stmt Statement) string {
+	var b strings.Builder
+	var writeExpr func(Expr, string)
+	writeExpr = func(e Expr, indent string) {
+		switch x := e.(type) {
+		case *IdentifierExpr:
+			fmt.Fprintf(&amp;b, "%sIdentifier %s\n", indent, x.Name)
+		case *LiteralExpr:
+			fmt.Fprintf(&amp;b, "%sLiteral %s\n", indent, literalString(x.Value))
+		case *BinaryExpr:
+			fmt.Fprintf(&amp;b, "%sBinary %s\n", indent, x.Operator)
+			writeExpr(x.Left, indent+"  ")
+			writeExpr(x.Right, indent+"  ")
+		}
+	}
+	switch s := stmt.(type) {
+	case *CreateTableStmt:
+		fmt.Fprintf(&amp;b, "CreateTable %s\n", s.Name)
+		for _, c := range s.Columns {
+			nullText := "NULL"
+			if !c.Nullable {
+				nullText = "NOT NULL"
+			}
+			if c.Type.Type == TypeText {
+				fmt.Fprintf(&amp;b, "  Column %s TEXT(%d) %s\n", c.Name, c.Type.TextLen, nullText)
+			} else {
+				fmt.Fprintf(&amp;b, "  Column %s %s %s\n", c.Name, c.Type.Type, nullText)
+			}
+		}
+	case *InsertStmt:
+		fmt.Fprintf(&amp;b, "Insert %s\n", s.Table)
+		for _, v := range s.Values {
+			fmt.Fprintf(&amp;b, "  %s\n", literalString(v))
+		}
+	case *SelectStmt:
+		fmt.Fprintf(&amp;b, "Select from %s\n", s.Table)
+		if s.All {
+			b.WriteString("  Columns *\n")
+		} else {
+			fmt.Fprintf(&amp;b, "  Columns %s\n", strings.Join(s.Columns, ", "))
+		}
+		if s.Where != nil {
+			b.WriteString("  Where\n")
+			writeExpr(s.Where, "    ")
+		}
+	case *DeleteStmt:
+		fmt.Fprintf(&amp;b, "Delete from %s\n  Where\n", s.Table)
+		writeExpr(s.Where, "    ")
+	}
+	return b.String()
+}
+
+func literalString(v Literal) string {
+	switch v.Kind {
+	case LiteralInt:
+		return fmt.Sprintf("INT %d", v.Int)
+	case LiteralString:
+		return fmt.Sprintf("STRING %q", v.Text)
+	case LiteralBool:
+		return fmt.Sprintf("BOOL %t", v.Bool)
+	case LiteralNull:
+		return "NULL"
+	default:
+		return "?"
+	}
+}
+</code></pre><h3>sql.go</h3><pre><code>package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type ExecutionResult struct {
+	Columns []string
+	Rows    [][]string
+	Message string
+}
+
+func ExecuteStatement(store *Store, stmt Statement) (ExecutionResult, error) {
+	switch s := stmt.(type) {
+	case *CreateTableStmt:
+		cols := make([]Column, len(s.Columns))
+		for i, c := range s.Columns {
+			cols[i] = Column{Name: c.Name, Type: c.Type.Type, MaxLen: c.Type.TextLen, Nullable: c.Nullable}
+		}
+		t, err := store.CreateTable(s.Name, cols)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: fmt.Sprintf("created table=%s id=%d row_size=%d root_page=%d", t.Name, t.ID, t.Schema.RowSize, t.tree.RootPage())}, nil
+
+	case *InsertStmt:
+		t, err := store.Table(s.Table)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		if len(s.Values) != len(t.Schema.Columns) {
+			return ExecutionResult{}, fmt.Errorf("table %s expects %d values, got %d", t.Name, len(t.Schema.Columns), len(s.Values))
+		}
+		values := make([]Value, len(s.Values))
+		for i, lit := range s.Values {
+			v, err := literalToValue(t.Schema.Columns[i], lit)
+			if err != nil {
+				return ExecutionResult{}, err
+			}
+			values[i] = v
+		}
+		rowID, err := store.Insert(t.Name, values)
+		if err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: fmt.Sprintf("inserted 1 row (rowid=%d)", rowID)}, nil
+
+	case *SelectStmt:
+		return executeSelect(store, s)
+
+	case *DeleteStmt:
+		rowID, err := rowIDPredicate(s.Where)
+		if err != nil {
+			return ExecutionResult{}, fmt.Errorf("DELETE: %w", err)
+		}
+		if err := store.Delete(s.Table, rowID); err != nil {
+			return ExecutionResult{}, err
+		}
+		return ExecutionResult{Message: "deleted 1 row"}, nil
+	default:
+		return ExecutionResult{}, fmt.Errorf("unsupported statement %T", stmt)
+	}
+}
+
+func literalToValue(c Column, lit Literal) (Value, error) {
+	if lit.Kind == LiteralNull {
+		if !c.Nullable {
+			return Value{}, fmt.Errorf("column %s is NOT NULL", c.Name)
+		}
+		return Value{Type: c.Type, Null: true}, nil
+	}
+	v := Value{Type: c.Type}
+	switch c.Type {
+	case TypeInt64:
+		if lit.Kind != LiteralInt {
+			return Value{}, fmt.Errorf("column %s expects INT", c.Name)
+		}
+		v.Int = lit.Int
+	case TypeBool:
+		if lit.Kind != LiteralBool {
+			return Value{}, fmt.Errorf("column %s expects BOOL", c.Name)
+		}
+		v.Bool = lit.Bool
+	case TypeText:
+		if lit.Kind != LiteralString {
+			return Value{}, fmt.Errorf("column %s expects a quoted TEXT literal", c.Name)
+		}
+		if len([]byte(lit.Text)) &gt; int(c.MaxLen) {
+			return Value{}, fmt.Errorf("column %s allows at most %d UTF-8 bytes", c.Name, c.MaxLen)
+		}
+		v.Text = lit.Text
+	default:
+		return Value{}, fmt.Errorf("unsupported column type %s", c.Type)
+	}
+	return v, nil
+}
+
+func executeSelect(store *Store, s *SelectStmt) (ExecutionResult, error) {
+	t, err := store.Table(s.Table)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	projection, err := resolveProjection(t, s)
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	var rows []Row
+	if s.Where == nil {
+		rows, err = store.Scan(t.Name)
+	} else {
+		rowID, predErr := rowIDPredicate(s.Where)
+		if predErr != nil {
+			return ExecutionResult{}, fmt.Errorf("Part 6 executor only supports WHERE rowid = &lt;integer&gt;: %w", predErr)
+		}
+		row, getErr := store.Get(t.Name, rowID)
+		if errors.Is(getErr, ErrNotFound) || errors.Is(getErr, ErrDeleted) {
+			rows = nil
+		} else if getErr != nil {
+			return ExecutionResult{}, getErr
+		} else {
+			rows = []Row{row}
+		}
+	}
+	if err != nil {
+		return ExecutionResult{}, err
+	}
+	result := ExecutionResult{Columns: projection.headers}
+	for _, row := range rows {
+		out := make([]string, len(projection.items))
+		for i, item := range projection.items {
+			if item.rowID {
+				out[i] = strconv.FormatInt(row.RowID, 10)
+			} else {
+				out[i] = FormatValue(row.Values[item.columnIndex])
+			}
+		}
+		result.Rows = append(result.Rows, out)
+	}
+	return result, nil
+}
+
+type projectionItem struct {
+	rowID       bool
+	columnIndex int
+}
+type resolvedProjection struct {
+	headers []string
+	items   []projectionItem
+}
+
+func resolveProjection(t *Table, s *SelectStmt) (resolvedProjection, error) {
+	if s.All {
+		p := resolvedProjection{headers: []string{"rowid"}, items: []projectionItem{{rowID: true}}}
+		for i, c := range t.Schema.Columns {
+			p.headers = append(p.headers, c.Name)
+			p.items = append(p.items, projectionItem{columnIndex: i})
+		}
+		return p, nil
+	}
+	var p resolvedProjection
+	for _, name := range s.Columns {
+		if strings.EqualFold(name, "rowid") {
+			p.headers = append(p.headers, "rowid")
+			p.items = append(p.items, projectionItem{rowID: true})
+			continue
+		}
+		idx := -1
+		for i, c := range t.Schema.Columns {
+			if strings.EqualFold(c.Name, name) {
+				idx = i
+				name = c.Name
+				break
+			}
+		}
+		if idx &lt; 0 {
+			return resolvedProjection{}, fmt.Errorf("column %q not found in table %s", name, t.Name)
+		}
+		p.headers = append(p.headers, name)
+		p.items = append(p.items, projectionItem{columnIndex: idx})
+	}
+	return p, nil
+}
+
+func rowIDPredicate(expr Expr) (int64, error) {
+	b, ok := expr.(*BinaryExpr)
+	if !ok || b.Operator != TokenEqual {
+		return 0, fmt.Errorf("predicate must be an equality")
+	}
+	left, ok := b.Left.(*IdentifierExpr)
+	if !ok || !strings.EqualFold(left.Name, "rowid") {
+		return 0, fmt.Errorf("left side must be rowid")
+	}
+	right, ok := b.Right.(*LiteralExpr)
+	if !ok || right.Value.Kind != LiteralInt {
+		return 0, fmt.Errorf("right side must be an integer")
+	}
+	if right.Value.Int &lt; 1 {
+		return 0, fmt.Errorf("rowid must be &gt;= 1")
+	}
+	return right.Value.Int, nil
+}
+</code></pre><h3>main.go</h3><pre><code>package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+func printResult(r ExecutionResult) {
+	if r.Message != "" {
+		fmt.Println(r.Message)
+	}
+	if len(r.Columns) == 0 {
+		return
+	}
+	fmt.Println(strings.Join(r.Columns, " | "))
+	for _, row := range r.Rows {
+		fmt.Println(strings.Join(row, " | "))
+	}
+	fmt.Printf("(%d row(s))\n", len(r.Rows))
+}
+
+func handleMeta(store *Store, line string) bool {
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return false
+	}
+	cmd := strings.ToLower(parts[0])
+	switch cmd {
+	case ".quit", ".exit":
+		return true
+	case ".help":
+		fmt.Println("SQL:")
+		fmt.Println("  CREATE TABLE t (name TEXT(40) NOT NULL, age INT, active BOOL);")
+		fmt.Println("  INSERT INTO t VALUES ('alice', 30, true);")
+		fmt.Println("  SELECT * FROM t;")
+		fmt.Println("  SELECT rowid, name FROM t WHERE rowid = 1;")
+		fmt.Println("  DELETE FROM t WHERE rowid = 1;")
+		fmt.Println("Meta commands:")
+		fmt.Println("  .tables | .schema &lt;table&gt; | .tree &lt;table&gt; | .datapages &lt;table&gt;")
+		fmt.Println("  .catalogpages | .stats | .flush | .verify | .pageinfo &lt;n&gt;")
+		fmt.Println("  .tokens &lt;sql&gt; | .ast &lt;sql&gt; | .quit")
+	case ".tables":
+		tables := store.Tables()
+		if len(tables) == 0 {
+			fmt.Println("(no tables)")
+			break
+		}
+		for _, t := range tables {
+			fmt.Printf("id=%d name=%s columns=%d row_size=%d root_page=%d next_rowid=%d\n", t.ID, t.Name, len(t.Schema.Columns), t.Schema.RowSize, t.tree.RootPage(), t.nextRowID)
+		}
+	case ".schema":
+		if len(parts) != 2 {
+			fmt.Println("usage: .schema &lt;table&gt;")
+			break
+		}
+		text, err := store.DescribeTable(parts[1])
+		if err != nil {
+			fmt.Println("schema error:", err)
+		} else {
+			fmt.Print(text)
+		}
+	case ".tree":
+		if len(parts) != 2 {
+			fmt.Println("usage: .tree &lt;table&gt;")
+			break
+		}
+		text, err := store.TreeDump(parts[1])
+		if err != nil {
+			fmt.Println("tree error:", err)
+		} else {
+			fmt.Print(text)
+		}
+	case ".datapages":
+		if len(parts) != 2 {
+			fmt.Println("usage: .datapages &lt;table&gt;")
+			break
+		}
+		pages, err := store.DataChain(parts[1])
+		if err != nil {
+			fmt.Println("data pages error:", err)
+		} else {
+			fmt.Println("data_pages=", pages)
+		}
+	case ".catalogpages":
+		pages, err := store.CatalogPages()
+		if err != nil {
+			fmt.Println("catalog pages error:", err)
+		} else {
+			fmt.Println("catalog_pages=", pages)
+		}
+	case ".stats":
+		st := store.Stats()
+		fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d validation_failures=%d\n", st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites, st.ValidationFailures)
+	case ".flush":
+		if err := store.Flush(); err != nil {
+			fmt.Println("flush error:", err)
+		} else {
+			fmt.Println("dirty pages sealed, checksummed, and flushed")
+		}
+	case ".verify":
+		pages, err := store.Verify()
+		if err != nil {
+			fmt.Println("verify error:", err)
+		} else {
+			fmt.Printf("verified %d pages\n", pages)
+		}
+	case ".pageinfo":
+		if len(parts) != 2 {
+			fmt.Println("usage: .pageinfo &lt;page-number&gt;")
+			break
+		}
+		n, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			fmt.Println("page number must be a non-negative integer")
+			break
+		}
+		info, err := store.PageInfo(n)
+		if err != nil {
+			fmt.Println("pageinfo error:", err)
+		} else {
+			fmt.Printf("page=%d type=%s generation=%d checksum=%08x\n", info.Number, info.Type, info.Generation, info.Checksum)
+		}
+	case ".tokens":
+		sql := strings.TrimSpace(strings.TrimPrefix(line, parts[0]))
+		if sql == "" {
+			fmt.Println("usage: .tokens &lt;sql&gt;")
+			break
+		}
+		tokens, err := Lex(sql)
+		if err != nil {
+			fmt.Println(err)
+			break
+		}
+		for _, tok := range tokens {
+			fmt.Printf("%-10s pos=%-3d lexeme=%q\n", tok.Kind, tok.Pos, tok.Lexeme)
+		}
+	case ".ast":
+		sql := strings.TrimSpace(strings.TrimPrefix(line, parts[0]))
+		if sql == "" {
+			fmt.Println("usage: .ast &lt;sql&gt;")
+			break
+		}
+		stmt, err := ParseSQL(sql)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Print(DescribeAST(stmt))
+		}
+	default:
+		fmt.Println("unknown meta command; try .help")
+	}
+	return false
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("usage: minidb &lt;database-file&gt;")
+		os.Exit(1)
+	}
+	store, err := Open(os.Args[1])
+	if err != nil {
+		fmt.Println("open error:", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	fmt.Println("MiniSQLite Part 6 — SQL parser")
+	fmt.Println("Type .help for examples. SQL statements may end with ';'.")
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minidb&gt; ")
+		if !scanner.Scan() {
+			fmt.Println()
+			break
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, ".") {
+			if handleMeta(store, line) {
+				return
+			}
+			continue
+		}
+		stmt, err := ParseSQL(line)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		result, err := ExecuteStatement(store, stmt)
+		if err != nil {
+			fmt.Println("execution error:", err)
+			continue
+		}
+		printResult(result)
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("input error:", err)
+	}
+}
+</code></pre><h3>Build and smoke-test the finished project</h3><pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre><pre><code>CREATE TABLE users (
+    name TEXT(32) NOT NULL,
+    email TEXT(64) NOT NULL,
+    age INT NOT NULL,
+    active BOOL NOT NULL,
+    nickname TEXT(20)
+);
+
+INSERT INTO users VALUES ('Alice Smith', 'alice@example.com', 30, true, NULL);
+INSERT INTO users VALUES ('Bob', 'bob@example.com', 25, false, 'Bobby');
+
+SELECT * FROM users;
+SELECT rowid, name, age FROM users WHERE rowid = 2;
+DELETE FROM users WHERE rowid = 1;
+SELECT * FROM users;
+.flush
+.verify
+.quit</code></pre><p>A successful run should show the two inserted rows, an indexed lookup of rowid 2, one deletion, the remaining row, a successful flush, and page verification.</p><h2 id="s36">36. What you should understand before leaving Part 6</h2><p>Before moving on, you should be able to explain the entire path of this statement without looking at the code:</p><pre><code>SELECT rowid, name FROM users WHERE rowid = 2;</code></pre><ol><li>The REPL preserves the raw line instead of splitting on whitespace.</li><li>The lexer emits keyword, identifier, punctuation, operator, number, semicolon, and EOF tokens.</li><li>The recursive-descent parser checks those tokens against the SELECT grammar.</li><li>The parser builds a <code>SelectStmt</code> with a <code>BinaryExpr</code> WHERE tree.</li><li>The executor resolves the <code>users</code> table and requested columns against the Part 5 catalog/schema.</li><li>The executor recognizes the supported <code>rowid = integer</code> predicate.</li><li>It calls <code>Store.Get</code> instead of scanning.</li><li>The table's persistent B+tree maps rowid 2 to a physical record pointer.</li><li>The pager supplies the data page and validates the page format/checksum as usual.</li><li>The row decoder uses the persisted schema to recover values.</li><li>The executor projects only <code>rowid</code> and <code>name</code> for output.</li></ol><div class="box insight"><strong>The architecture after Part 6</strong><p>MiniSQLite now has two major halves that finally meet cleanly: a <strong>language front end</strong> (lexer → parser → AST) and a <strong>storage engine</strong> (catalog → schema → B+tree → pager → reliable pages). The executor is the bridge between them.</p></div><div class="final"><h3>The pain that should now bother you</h3><p>We can parse SQL, but our executor is primitive. It knows “scan everything” or “rowid lookup.” The parser can already describe predicates the executor refuses to run. That is the next natural pressure: expression evaluation, binding, planning, and richer query execution.</p><p class="muted">That discomfort is useful. Just as full scans motivated the B+tree and hard-coded rows motivated schemas, the gap between a valid AST and an efficient execution strategy will motivate the next database subsystem.</p></div></article><nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 6 of 10</span></div><div class="series-links"><a href="part-05.html">← Part 5</a><a href="index.html">Series home</a><a href="part-07.html">Part 7 →</a></div></nav></body></html>

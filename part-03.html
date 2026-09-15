@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MiniSQLite Part 3 — Reliable File Format</title>
+<style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb;--purple:#6d4aff;--purple2:#f1edff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em}h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em}h3{font-size:1.28rem;margin:36px 0 12px}h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:820px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}.purplebox{background:var(--purple2);border-color:var(--purple)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0;white-space:pre-wrap}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:22px 0}.flowbox{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;background:#fbfcfe}.flowarrow{font-size:1.4rem;color:#64748b}.muted{color:var(--muted)}
+.pageviz{border:2px solid #65758b;border-radius:12px;overflow:hidden;margin:22px 0;background:#fff}.phdr{display:grid;grid-template-columns:1.1fr .8fr .8fr 1.4fr 1.4fr 1.2fr 1fr;background:#eaf1ff;border-bottom:2px solid #65758b}.phdr div,.payload div{padding:10px;border-right:1px solid #aeb8c6;text-align:center;font-size:.83rem}.phdr div:last-child,.payload div:last-child{border-right:0}.payload{padding:24px;text-align:center;background:#fbfcfe}.bytes{font-family:Consolas,monospace;font-size:.82rem;color:#536176}.dangerline{border-top:4px dashed #d45b5b;margin:18px 0;position:relative}.dangerline:after{content:'possible tear';position:absolute;right:8px;top:-15px;background:white;color:#a33131;padding:0 7px;font-size:.78rem;font-weight:800}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.flowarrow{transform:rotate(90deg)}.phdr{grid-template-columns:1fr 1fr}.phdr div{border-bottom:1px solid #aeb8c6}h1{font-size:2.15rem}}
+</style>
+<link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-03.html" rel="canonical"/><meta content="Add page headers, metadata, checksums, validation, and experiments that detect corruption and torn writes." name="description"/></head>
+<body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 3 of 10</span></div><div class="series-links"><a href="part-02.html">← Part 2</a><a href="index.html">Series home</a><a href="part-04.html">Part 4 →</a></div></nav>
+<article>
+<div class="kicker">MiniSQLite · Part 3 · First-principles database engineering</div>
+<h1>Reliable File Format</h1>
+<p class="subtitle">Part 2 gave us pages and a pager. But the pager still trusts every 4096 bytes it reads. If a byte changes, if the wrong page lands at the wrong offset, or if the machine loses power halfway through a page write, our program may quietly interpret damaged bytes as valid database state. In Part 3 we stop trusting the file. Every page will carry enough structure to identify itself and enough redundancy to detect many forms of corruption.</p>
+<div class="box teacher"><strong>How to use this chapter</strong>Keep Part 2 beside you, but build Part 3 in a copy. Do not paste the complete program from the end first. We will first break the Part 2 assumptions, then design the format on paper, then add page headers, checksums, metadata validation, verification tools, and corruption experiments one piece at a time. At each checkpoint, compile or run something observable. The aim is to make “reliable file format” concrete—not a list of database buzzwords.</div>
+<div class="toc"><h3>Table of contents</h3><ol>
+<li><a href="#setup">Project setup: preserve Part 2</a></li>
+<li><a href="#pain">What is still unsafe after pages?</a></li>
+<li><a href="#reliability">Reliability vocabulary</a></li>
+<li><a href="#failure">See corruption with your own eyes</a></li>
+<li><a href="#design">Design the Part 3 page format</a></li>
+<li><a href="#header">Build the common page header</a></li>
+<li><a href="#checksum">Derive the checksum rule</a></li>
+<li><a href="#validate">Validate before trusting bytes</a></li>
+<li><a href="#pager">Teach the pager to verify pages</a></li>
+<li><a href="#flush">Seal pages before writing</a></li>
+<li><a href="#metadata">Make page 0 real metadata</a></li>
+<li><a href="#records">Recalculate record placement</a></li>
+<li><a href="#store">Move Store to the Part 3 format</a></li>
+<li><a href="#tools">Add VERIFY and PAGEINFO</a></li>
+<li><a href="#lab-corrupt">Lab: corrupt one byte</a></li>
+<li><a href="#lab-wrong">Lab: put the wrong page in the right place</a></li>
+<li><a href="#torn">Understand torn writes</a></li>
+<li><a href="#lab-torn">Lab: simulate a torn page</a></li>
+<li><a href="#limits">What checksums still cannot guarantee</a></li>
+<li><a href="#exercises">Exercises</a></li>
+<li><a href="#complete">Complete program</a></li>
+<li><a href="#understand">What you should understand</a></li>
+</ol></div>
+<h2 id="setup">1. Project setup: preserve Part 2 before changing the format</h2>
+<p>Part 3 changes the bytes on disk again. A Part 2 file begins each page directly with database payload. A Part 3 file begins <em>every</em> page with a common 32-byte page header. That means a Part 2 database is intentionally incompatible with Part 3.</p>
+<p>That incompatibility is not a mistake. A file format is a contract. When the contract changes, silently pretending old bytes satisfy the new rules is more dangerous than rejecting them.</p>
+<h3>Step 0A — copy the Part 2 project</h3>
+<pre><code>cp -R minisqlite-part2 minisqlite-part3
+cd minisqlite-part3
+rm -f minidb *.db</code></pre>
+<p>PowerShell:</p>
+<pre><code>Copy-Item -Recurse minisqlite-part2 minisqlite-part3
+Set-Location minisqlite-part3
+Remove-Item minidb, *.db -ErrorAction SilentlyContinue</code></pre>
+<p>Do not edit the Part 2 folder in place. We want to be able to compare the two designs.</p>
+<h3>Step 0B — prove Part 2 still builds in the copied workspace</h3>
+<pre><code>gofmt -w *.go
+go build -o minidb .
+./minidb sanity.db</code></pre>
+<p>Enter:</p>
+<pre><code>minidb&gt; INSERT alice alice@example.com 30
+inserted id=1
+minidb&gt; FLUSH
+dirty pages flushed
+minidb&gt; GET 1
+id=1 name=alice email=alice@example.com age=30
+minidb&gt; EXIT</code></pre>
+<p>Delete <code>sanity.db</code> after the test. Part 3 will create a different format.</p>
+<h3>Step 0C — add one new source file</h3>
+<p>Part 2 had pager logic and record logic, but page-format rules were tiny. Part 3 gives those rules enough responsibility to deserve their own file:</p>
+<pre><code>touch format.go</code></pre>
+<p>PowerShell:</p>
+<pre><code>New-Item format.go -ItemType File</code></pre>
+<div class="filetree">minisqlite-part3/
+├── go.mod
+├── format.go   ← physical page format, page headers, checksums
+├── pager.go    ← cache + page I/O
+├── store.go    ← records + database metadata
+└── main.go     ← CLI</div>
+<div class="box insight"><strong>Architecture checkpoint</strong>Part 2 separated “records” from “file I/O.” Part 3 adds another boundary: <em>what makes 4096 bytes a valid MiniSQLite page?</em> That rule belongs neither to the user-record decoder nor to the terminal UI. It belongs to the file format.</div>
+<h2 id="pain">2. What is still unsafe after pages?</h2>
+<p>Part 2 improved organization, not trustworthiness. The pager can read page 7 and cache it, but once <code>ReadAt</code> returns 4096 bytes the program assumes those bytes are correct.</p>
+<p>Imagine three failures.</p>
+<div class="grid">
+<div class="card"><h4>One byte changes</h4><p>A storage error, accidental edit, buggy program, or test tool changes one byte in a user's email. Part 2 has no page-wide integrity check. The record may still decode and look merely strange.</p></div>
+<div class="card"><h4>A valid page is misplaced</h4><p>Suppose the 4096 bytes from page 1 are accidentally copied over page 2. Those bytes are perfectly readable and may contain valid-looking users. Part 2 cannot tell that they belong somewhere else.</p></div>
+<div class="card"><h4>A page write is torn</h4><p>We intend to replace all 4096 bytes, but after a crash some portion comes from the new page and some from the old page. The OS call was conceptually “write a page”; durable storage may have experienced smaller writes underneath.</p></div>
+<div class="card"><h4>Metadata lies</h4><p>Page 0 says <code>nextID=101</code>, but perhaps the last data-page update never became durable. Both pieces can be individually readable yet disagree semantically.</p></div>
+</div>
+<div class="box question"><strong>Didn't <code>file.Sync()</code> solve this?</strong><code>Sync</code> asks the operating system to push pending changes toward durable storage. It matters for durability, but it is not a file-format validation mechanism. It does not let a future reader look at arbitrary bytes and answer “is this page internally intact and is it the page I expected?” We need information <em>inside the file</em> for that.</div>
+<h2 id="reliability">3. Reliability vocabulary: four different promises</h2>
+<p>Before coding, separate ideas that are often blurred together. A system can provide one without providing all of the others.</p>
+<table><thead><tr><th>Property</th><th>Question</th><th>Part 3 status</th></tr></thead><tbody>
+<tr><td><strong>Structural validity</strong></td><td>Do these bytes obey our declared format?</td><td>We will improve this with magic bytes, versions, page types, page numbers, and metadata checks.</td></tr>
+<tr><td><strong>Integrity detection</strong></td><td>Can we notice that bytes changed unexpectedly?</td><td>We will add a checksum to every page.</td></tr>
+<tr><td><strong>Durability</strong></td><td>After we report success, are the intended changes persistent?</td><td>We continue using full-page writes plus <code>Sync</code>, but real durability depends on the whole I/O stack.</td></tr>
+<tr><td><strong>Atomicity / recovery</strong></td><td>If a crash happens halfway through a multi-page operation, can we restore one coherent state?</td><td><strong>Not solved in Part 3.</strong> That requires journaling, WAL, copy-on-write, or another recovery protocol.</td></tr>
+</tbody></table>
+<p>This distinction is the center of the chapter. A checksum is valuable because it converts some silent corruption into a loud error. It does not automatically reconstruct the missing bytes. Detection and recovery are different mechanisms.</p>
+<div class="box warning"><strong>Reliable does not mean impossible to corrupt</strong>Our Part 3 goal is modest and precise: reject pages that fail our structural or checksum rules instead of blindly interpreting them. A production database needs stronger recovery, redundancy, careful write ordering, concurrency control, and extensive testing.</div>
+<h2 id="failure">4. See the Part 2 weakness before fixing it</h2>
+<p>If you still have a Part 2 executable and database, this experiment is worth doing there. Insert a user, flush, exit, and use <code>xxd</code> to inspect the file. Then change one byte in a record with <code>dd</code>. Depending on which byte you change, Part 2 may happily print a damaged name or email because the page has no checksum.</p>
+<p>That observation should motivate the new invariant:</p>
+<div class="box insight"><strong>New read rule</strong>No page from disk is trusted merely because 4096 bytes were returned. Before the pager exposes a persisted page to the store, the pager must validate the page header and checksum.</div>
+<h2 id="design">5. Design the Part 3 page format on paper first</h2>
+<p>We keep <code>PageSize = 4096</code>. But every page now spends its first 32 bytes on a <strong>common page header</strong>. The rest is payload owned by the page's type.</p>
+<div class="pageviz">
+<div class="phdr"><div><strong>0..3</strong><br/>magic</div><div><strong>4..5</strong><br/>header ver.</div><div><strong>6</strong><br/>type</div><div><strong>8..15</strong><br/>page number</div><div><strong>16..23</strong><br/>generation</div><div><strong>24..27</strong><br/>checksum</div></div>
+<div class="payload"><strong>32..4095: page payload</strong><br/><span class="bytes">metadata fields on page 0, record slots on data pages</span></div>
+</div>
+<table><thead><tr><th>Bytes</th><th>Field</th><th>Reason</th></tr></thead><tbody>
+<tr><td><code>0..3</code></td><td><code>PG03</code></td><td>Quickly distinguish Part 3 physical pages from random or older data.</td></tr>
+<tr><td><code>4..5</code></td><td>page-header version</td><td>Lets the physical page-header scheme evolve independently of higher-level database metadata.</td></tr>
+<tr><td><code>6</code></td><td>page type</td><td>Page 0 is metadata; pages 1+ are data today. Later types might include B-tree or free-list pages.</td></tr>
+<tr><td><code>7</code></td><td>flags</td><td>Reserved. We write zero for now.</td></tr>
+<tr><td><code>8..15</code></td><td>page number</td><td>A valid page can prove which logical page it claims to be.</td></tr>
+<tr><td><code>16..23</code></td><td>generation</td><td>Incremented whenever we seal a dirty page for writing. Useful for observation and future recovery designs.</td></tr>
+<tr><td><code>24..27</code></td><td>CRC-32 checksum</td><td>Detect many accidental changes to the page.</td></tr>
+<tr><td><code>28..31</code></td><td>reserved</td><td>Space for future physical-page metadata.</td></tr>
+</tbody></table>
+<p>The checksum covers the entire 4096-byte page, including the header, except that the checksum field itself is treated as zero while calculating. This means changing a record, the page type, the generation, or the embedded page number changes the checksum.</p>
+<h3>The cost: we lose one record slot per page</h3>
+<p>In Part 2, all 4096 bytes were available to the record layer:</p>
+<div class="math">4096 / 256 = 16 records</div>
+<p>In Part 3, only 4064 bytes remain after the 32-byte page header:</p>
+<div class="math">usable = 4096 - 32 = 4064 bytes
+slots  = floor(4064 / 256) = 15
+used by records = 15 × 256 = 3840 bytes
+unused tail = 4064 - 3840 = 224 bytes</div>
+<p>We deliberately accept this inefficiency. Reliability metadata consumes space. Real storage engines make similar tradeoffs, though their page layouts are much more sophisticated.</p>
+<h2 id="header">6. Build the common page header</h2>
+<p>Open <code>format.go</code>. We will start with declarations only. This checkpoint should compile even though the rest of the program does not use the new format yet.</p>
+<h3><span class="step">TYPE 1</span>Declare the physical-page contract</h3>
+<pre><code>package main
+
+import "fmt"
+
+const (
+    PageSize          = 4096
+    PageHeaderSize    = 32
+    PageMagic         = "PG03"
+    PageHeaderVersion = uint16(1)
+    ChecksumAlgorithm = uint32(1) // CRC-32/IEEE
+)
+
+type PageType uint8
+
+const (
+    PageTypeMetadata PageType = 1
+    PageTypeData     PageType = 2
+)
+
+func (t PageType) String() string {
+    switch t {
+    case PageTypeMetadata:
+        return "metadata"
+    case PageTypeData:
+        return "data"
+    default:
+        return fmt.Sprintf("unknown(%d)", uint8(t))
+    }
+}</code></pre>
+<div class="run"><strong>Checkpoint</strong>Run <code>gofmt -w *.go</code> and <code>go build .</code>. If your old <code>pager.go</code> still declares <code>PageSize</code>, remove that duplicate declaration there. We are moving ownership of the physical format into <code>format.go</code>.</div>
+<h3><span class="step">TYPE 2</span>Initialize a brand-new page deliberately</h3>
+<p>A new page should not be “4096 mysterious zeroes.” As soon as it exists logically, give it identity.</p>
+<pre><code>func initializePageData(data []byte, pageNum uint64, pageType PageType) error {
+    if len(data) != PageSize {
+        return fmt.Errorf("initialize page: expected %d bytes, got %d", PageSize, len(data))
+    }
+
+    clear(data)
+    copy(data[0:4], []byte(PageMagic))
+    binary.LittleEndian.PutUint16(data[4:6], PageHeaderVersion)
+    data[6] = byte(pageType)
+    data[7] = 0
+    binary.LittleEndian.PutUint64(data[8:16], pageNum)
+    binary.LittleEndian.PutUint64(data[16:24], 0)
+    binary.LittleEndian.PutUint32(data[24:28], 0)
+    binary.LittleEndian.PutUint32(data[28:32], 0)
+    return nil
+}</code></pre>
+<p>Add <code>encoding/binary</code> to the imports. Notice that we still leave the checksum at zero. The page is not yet sealed for disk. It may receive metadata or records first.</p>
+<div class="box teacher"><strong>Why embed the page number?</strong>Imagine copying an intact page 1 over page 2. A checksum over page 1 would still be valid, because the copied bytes are unchanged. But when the pager reads physical position 2, the embedded page number says “I am page 1.” That catches a class of corruption a checksum alone cannot distinguish.</div>
+<h2 id="checksum">7. Derive the checksum rule before calling a library</h2>
+<p>A checksum is a compact value computed from larger data. Change the data and the checksum will usually change. On read, we compute it again and compare.</p>
+<p>MiniSQLite uses Go's standard <code>hash/crc32</code> package with the IEEE polynomial. CRC-32 is useful for teaching accidental-corruption detection. It is <strong>not cryptographic authentication</strong>. Someone deliberately modifying a file can recompute CRC-32, and collisions are possible.</p>
+<h3>The self-reference problem</h3>
+<p>If the checksum is stored inside the page, should the checksum calculation include the checksum itself? That would be awkwardly self-referential. We define a precise rule instead:</p>
+<div class="math">checksum(page) = CRC32(
+    bytes 0..23
+    + four zero bytes
+    + bytes 28..4095
+)</div>
+<p>The persisted checksum lives at bytes <code>24..27</code>, but those four bytes are treated as zero while calculating.</p>
+<h3><span class="step">TYPE 3</span>Compute without mutating the page</h3>
+<pre><code>func computePageChecksum(data []byte) (uint32, error) {
+    if len(data) != PageSize {
+        return 0, fmt.Errorf("checksum: expected %d bytes, got %d", PageSize, len(data))
+    }
+
+    h := crc32.NewIEEE()
+    _, _ = h.Write(data[:24])
+    _, _ = h.Write([]byte{0, 0, 0, 0})
+    _, _ = h.Write(data[28:])
+    return h.Sum32(), nil
+}</code></pre>
+<p>Add <code>hash/crc32</code> to the imports.</p>
+<h3><span class="step">TYPE 4</span>Seal a page immediately before writing</h3>
+<p>“Sealing” means turning the current in-memory bytes into a self-describing persisted page: increment the generation, calculate the checksum, then store it.</p>
+<pre><code>func sealPageData(data []byte) (uint32, error) {
+    generation := binary.LittleEndian.Uint64(data[16:24]) + 1
+    binary.LittleEndian.PutUint64(data[16:24], generation)
+    binary.LittleEndian.PutUint32(data[24:28], 0)
+
+    checksum, err := computePageChecksum(data)
+    if err != nil {
+        return 0, err
+    }
+    binary.LittleEndian.PutUint32(data[24:28], checksum)
+    return checksum, nil
+}</code></pre>
+<p>Why seal during flush rather than every time a field changes? Because a cached page may receive several changes before it is written. The checksum should describe the exact bytes we are about to persist.</p>
+<h2 id="validate">8. Validation is the inverse of sealing</h2>
+<p>On read, the program should prove several facts before handing the page to higher layers:</p>
+<ol><li>The page is exactly 4096 bytes.</li><li>The physical magic is <code>PG03</code>.</li><li>The page-header version is supported.</li><li>The page type is known.</li><li>The embedded page number matches the file position requested.</li><li>A nonzero checksum exists.</li><li>The recomputed checksum equals the stored checksum.</li></ol>
+<h3><span class="step">TYPE 5</span>Represent decoded header information</h3>
+<pre><code>type PageHeaderInfo struct {
+    Type       PageType
+    Number     uint64
+    Generation uint64
+    Checksum   uint32
+}</code></pre>
+<p>Then add a small decoder that reads those fields. The complete version is at the end; for now focus on the validation sequence.</p>
+<h3><span class="step">TYPE 6</span>Reject before interpreting payload</h3>
+<pre><code>func validatePageData(expectedPageNum uint64, data []byte) (PageHeaderInfo, error) {
+    if string(data[0:4]) != PageMagic {
+        return PageHeaderInfo{}, fmt.Errorf("page %d: bad page magic", expectedPageNum)
+    }
+
+    info := decodePageHeader(data)
+    if info.Number != expectedPageNum {
+        return PageHeaderInfo{}, fmt.Errorf(
+            "page %d: stored page number is %d", expectedPageNum, info.Number)
+    }
+
+    computed, err := computePageChecksum(data)
+    if err != nil {
+        return PageHeaderInfo{}, err
+    }
+    if computed != info.Checksum {
+        return PageHeaderInfo{}, fmt.Errorf(
+            "page %d: checksum mismatch: stored=%08x computed=%08x",
+            expectedPageNum, info.Checksum, computed)
+    }
+
+    return info, nil
+}</code></pre>
+<div class="box warning"><strong>This snippet is intentionally incomplete</strong>The final validator also checks length, header version, valid page type, and missing checksum. We are splitting it here so you can see the logical order instead of receiving a wall of defensive code.</div>
+<h2 id="pager">9. Teach the pager to validate every persisted page</h2>
+<p>This is the architectural payoff. The store should not remember to verify checksums. Every caller that asks the pager for an existing page gets a validated page or an error.</p>
+<h3><span class="step">TYPE 7</span>Give Page an explicit type</h3>
+<p>Change the Part 2 page structure from:</p>
+<pre><code>type Page struct {
+    Number uint64
+    Data   []byte
+    dirty  bool
+}</code></pre>
+<p>to:</p>
+<pre><code>type Page struct {
+    Number uint64
+    Type   PageType
+    Data   []byte
+    dirty  bool
+}</code></pre>
+<h3><span class="step">TYPE 8</span>Make the caller state what type it expects</h3>
+<p>Change the pager API from <code>GetPage(pageNum)</code> to:</p>
+<pre><code>GetPage(pageNum uint64, expectedType PageType)</code></pre>
+<p>This gives us another invariant. Page 0 must be metadata. Record pages must be data pages. If bytes claim otherwise, stop.</p>
+<h3>Existing page path</h3>
+<p>After reading 4096 bytes, Part 2 immediately cached the page. Part 3 inserts validation first:</p>
+<pre><code>n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+if err != nil &amp;&amp; err != io.EOF {
+    return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+}
+if n != PageSize {
+    return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+}
+
+info, err := validatePageData(pageNum, page.Data)
+if err != nil {
+    p.validationFailures++
+    return nil, err
+}
+if info.Type != expectedType {
+    p.validationFailures++
+    return nil, fmt.Errorf("page %d: expected type %s, got %s",
+        pageNum, expectedType, info.Type)
+}
+
+page.Type = info.Type
+p.pages[pageNum] = page</code></pre>
+<p>The key detail is ordering: <strong>read → validate → cache/expose</strong>. Never cache an unvalidated persisted page as if it were trusted state.</p>
+<h3>New page path</h3>
+<p>A brand-new logical page has no bytes on disk to validate yet. Initialize its page header, mark it dirty, and let the normal flush path seal it later:</p>
+<pre><code>if pageNum == p.numPages {
+    if err := initializePageData(page.Data, pageNum, expectedType); err != nil {
+        return nil, err
+    }
+    page.MarkDirty()
+    p.numPages++
+    p.pages[pageNum] = page
+    return page, nil
+}</code></pre>
+<div class="run"><strong>Checkpoint</strong>At this point, switch all existing Part 2 calls temporarily to pass a page type: page 0 uses <code>PageTypeMetadata</code>; record pages use <code>PageTypeData</code>. Build. Do not worry yet that old Part 2 database files fail. That failure is expected because their pages do not contain <code>PG03</code> headers.</div>
+<h2 id="flush">10. Dirty pages must be sealed before they touch disk</h2>
+<p>Part 2 wrote <code>page.Data</code> directly. Part 3 must update generation and checksum immediately before the write.</p>
+<h3><span class="step">TYPE 9</span>Add one line to the flush path</h3>
+<pre><code>if _, err := sealPageData(page.Data); err != nil {
+    return err
+}
+
+n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)</code></pre>
+<p>Then keep the existing full-write check and only clear <code>dirty</code> after all 4096 bytes were accepted by <code>WriteAt</code>.</p>
+<p><code>FlushAll</code> still ends with <code>file.Sync()</code>. So the logical sequence is:</p>
+<div class="flow"><div class="flowbox"><strong>modify</strong><br/><span class="muted">page becomes dirty</span></div><div class="flowarrow">→</div><div class="flowbox"><strong>seal</strong><br/><span class="muted">generation + checksum</span></div><div class="flowarrow">→</div><div class="flowbox"><strong>write + sync</strong><br/><span class="muted">persist page bytes</span></div></div>
+<div class="box question"><strong>Why keep a generation if the checksum already detects changes?</strong>The generation is not required for CRC validation. It tells us which sealed revision of a page we are looking at and creates useful vocabulary for future recovery logic. But a generation stored only inside the same page cannot by itself prove that the page is the newest expected revision. If an old whole page survives with a valid checksum and old generation, we need some external recovery protocol to know it is stale.</div>
+<h2 id="metadata">11. Page 0 now has two layers of meaning</h2>
+<p>Page 0 is first a valid physical Part 3 page. Its first 32 bytes follow the same common header as every other page. Then its payload contains <strong>database metadata</strong>.</p>
+<div class="math">page 0 bytes 0..31   = common page header
+page 0 bytes 32..      = MiniSQLite database metadata</div>
+<table><thead><tr><th>Metadata offset</th><th>Value</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>32..39</code></td><td><code>MINIDB03</code></td><td>Database-format magic distinct from physical page magic.</td></tr>
+<tr><td><code>40..43</code></td><td>database version = 3</td><td>Reject incompatible database layouts.</td></tr>
+<tr><td><code>44..47</code></td><td>page size = 4096</td><td>Record the physical-page assumption.</td></tr>
+<tr><td><code>48..51</code></td><td>record size = 256</td><td>Validate record decoder expectations.</td></tr>
+<tr><td><code>52..55</code></td><td>page-header size = 32</td><td>Validate where payload begins.</td></tr>
+<tr><td><code>56..59</code></td><td>checksum algorithm = 1</td><td>Declare CRC-32/IEEE rather than assuming it invisibly.</td></tr>
+<tr><td><code>64..71</code></td><td><code>nextID</code></td><td>Logical record sequence metadata.</td></tr>
+</tbody></table>
+<h3><span class="step">TYPE 10</span>Write metadata inside the payload, not over the page header</h3>
+<pre><code>func writeDatabaseMetadata(page *Page, nextID int64) {
+    clear(page.Data[PageHeaderSize:])
+    copy(page.Data[32:40], []byte("MINIDB03"))
+    binary.LittleEndian.PutUint32(page.Data[40:44], 3)
+    binary.LittleEndian.PutUint32(page.Data[44:48], PageSize)
+    binary.LittleEndian.PutUint32(page.Data[48:52], RecordSize)
+    binary.LittleEndian.PutUint32(page.Data[52:56], PageHeaderSize)
+    binary.LittleEndian.PutUint32(page.Data[56:60], ChecksumAlgorithm)
+    binary.LittleEndian.PutUint64(page.Data[64:72], uint64(nextID))
+    page.MarkDirty()
+}</code></pre>
+<p>Using named offsets, as the final program does, is better than leaving raw numbers everywhere. The snippet above exposes the byte layout visually first.</p>
+<h3>Why two versions?</h3>
+<p>The common page header has a page-header version. The database payload has a database version. These can evolve at different speeds. For example, a future database version might reorganize records while retaining the same physical checksum header. Separating layers keeps the format easier to reason about.</p>
+<h2 id="records">12. Recalculate record placement: page headers changed the math</h2>
+<p>This is an important “format changes have consequences” moment. Do not keep the Part 2 mapping by habit.</p>
+<div class="math">SlotsPerPage = (PageSize - PageHeaderSize) / RecordSize
+             = (4096 - 32) / 256
+             = 15</div>
+<p>ID 1 is no longer at byte 0 inside data page 1. Byte 0 belongs to the physical page header. Record payload begins at byte 32.</p>
+<div class="math">zeroBased = id - 1
+pageNumber = 1 + zeroBased / 15
+slot = zeroBased % 15
+offsetInPage = 32 + slot × 256</div>
+<table><thead><tr><th>ID</th><th>Page</th><th>Slot</th><th>Offset inside page</th></tr></thead><tbody>
+<tr><td>1</td><td>1</td><td>0</td><td>32</td></tr>
+<tr><td>2</td><td>1</td><td>1</td><td>288</td></tr>
+<tr><td>15</td><td>1</td><td>14</td><td>3616</td></tr>
+<tr><td>16</td><td>2</td><td>0</td><td>32</td></tr>
+<tr><td>30</td><td>2</td><td>14</td><td>3616</td></tr>
+<tr><td>31</td><td>3</td><td>0</td><td>32</td></tr>
+</tbody></table>
+<h3><span class="step">TYPE 11</span>Change exactly one mapping function</h3>
+<pre><code>const SlotsPerPage = (PageSize - PageHeaderSize) / RecordSize
+
+func recordLocation(id int64) (uint64, int, error) {
+    if id &lt; 1 {
+        return 0, 0, ErrNotFound
+    }
+
+    zeroBased := uint64(id - 1)
+    pageNum := FirstDataPage + zeroBased/uint64(SlotsPerPage)
+    slot := zeroBased % uint64(SlotsPerPage)
+    offset := PageHeaderSize + int(slot)*RecordSize
+    return pageNum, offset, nil
+}</code></pre>
+<div class="box insight"><strong>This is why centralized layout math matters</strong>Because Part 2 put record placement in one helper, Part 3 can change the physical record start and records-per-page without rewriting arithmetic in INSERT, GET, and DELETE independently.</div>
+<h2 id="store">13. Move Store to the Part 3 format one operation at a time</h2>
+<p>The record encoder itself does not change. A 256-byte user record is still ID, tombstone, name, email, age, and padding. What changes is the page contract surrounding it.</p>
+<h3>Opening a new database</h3>
+<p>When the file has zero pages:</p>
+<ol><li>Ask for page 0 as <code>PageTypeMetadata</code>.</li><li>The pager initializes its common page header and marks it dirty.</li><li>The store writes database metadata into the payload.</li><li><code>FlushAll</code> seals the page, calculates the checksum, writes 4096 bytes, and syncs.</li></ol>
+<pre><code>header, err := pager.GetPage(HeaderPage, PageTypeMetadata)
+if err != nil {
+    pager.Close()
+    return nil, err
+}
+writeDatabaseMetadata(header, 1)
+if err := pager.FlushAll(); err != nil {
+    pager.Close()
+    return nil, err
+}</code></pre>
+<h3>Opening an existing database</h3>
+<p>The order becomes layered validation:</p>
+<div class="flow"><div class="flowbox"><strong>pager</strong><br/><span class="muted">PG03 + page number + CRC</span></div><div class="flowarrow">→</div><div class="flowbox"><strong>store</strong><br/><span class="muted">MINIDB03 + sizes + algorithm</span></div><div class="flowarrow">→</div><div class="flowbox"><strong>usable DB</strong><br/><span class="muted">nextID accepted</span></div></div>
+<p>If physical page validation fails, we never even try to interpret database metadata.</p>
+<h3>INSERT</h3>
+<p>The logic remains conceptually familiar, which is evidence that the pager abstraction is working:</p>
+<pre><code>page, err := s.pager.GetPage(pageNum, PageTypeData)
+if err != nil {
+    return 0, err
+}
+
+copy(page.Data[offset:offset+RecordSize], record)
+page.MarkDirty()</code></pre>
+<p>The checksum is <em>not</em> recomputed here. The page is simply dirty. Flush owns sealing.</p>
+<h3>GET</h3>
+<p>GET asks for a data page. If the page is coming from disk for the first time, checksum validation happens before the record decoder sees one byte of its payload.</p>
+<pre><code>page, err := s.pager.GetPage(pageNum, PageTypeData)
+if err != nil {
+    return User{}, err
+}
+
+u, err := decodeUser(page.Data[offset : offset+RecordSize])</code></pre>
+<p>This means a checksum failure surfaces as a page error rather than a misleading “user has weird email” result.</p>
+<h3>DELETE</h3>
+<p>DELETE changes one tombstone byte and marks the containing page dirty. At flush time, the entire 4096-byte page receives a new generation and checksum.</p>
+<div class="run"><strong>Checkpoint</strong>Build the database, delete every old <code>.db</code> file, start a new Part 3 database, insert 20 records, run <code>FLUSH</code>, and exit. Because there are 15 record slots per data page, 20 users require page 0 + two data pages = <strong>3 pages</strong>, so the file should be <strong>12288 bytes</strong>.</div>
+<h2 id="tools">14. Add tools that make reliability visible</h2>
+<p>Reliability code is easier to understand when the program can show its evidence. Part 3 adds two terminal commands.</p>
+<h3><code>PAGEINFO &lt;n&gt;</code></h3>
+<p>This prints the common header identity for a page after ensuring the page is sealed and valid:</p>
+<pre><code>minidb&gt; PAGEINFO 0
+page=0 type=metadata generation=2 checksum=6845da17
+minidb&gt; PAGEINFO 1
+page=1 type=data generation=1 checksum=ec18d324</code></pre>
+<p>Your exact generations and checksums will differ. The important thing is that these are now persisted facts, not invisible implementation state.</p>
+<h3><code>VERIFY</code></h3>
+<p>GET only touches pages needed for that request. A database might contain a corrupt page you have not read yet. <code>VERIFY</code> provides an explicit full-file integrity pass:</p>
+<ol><li>Flush dirty pages.</li><li>Read every physical page directly from disk.</li><li>Validate magic, header version, page type, embedded page number, and checksum.</li><li>Validate database metadata on page 0.</li></ol>
+<pre><code>minidb&gt; VERIFY
+verified 3 pages</code></pre>
+<h3><span class="step">TYPE 12</span>The verification loop</h3>
+<pre><code>func (p *Pager) VerifyAll() (uint64, error) {
+    buf := make([]byte, PageSize)
+    for pageNum := uint64(0); pageNum &lt; p.numPages; pageNum++ {
+        n, err := p.file.ReadAt(buf, int64(pageNum)*PageSize)
+        if err != nil &amp;&amp; err != io.EOF {
+            return pageNum, err
+        }
+        if n != PageSize {
+            return pageNum, fmt.Errorf("verify page %d: short read", pageNum)
+        }
+        if _, err := validatePageData(pageNum, buf); err != nil {
+            return pageNum, err
+        }
+    }
+    return p.numPages, nil
+}</code></pre>
+<p>Notice that VERIFY reads persisted bytes, not merely cached objects. Its question is specifically: “Does the file on disk satisfy our Part 3 page invariants?”</p>
+<h2 id="lab-corrupt">15. Practical lab: corrupt one byte and watch detection happen</h2>
+<p>Create a clean database with 20 records. The easiest way is to use your normal CLI. Flush and exit. Then make a backup:</p>
+<pre><code>cp lesson.db lesson-good.db</code></pre>
+<p>ID 16 is the first record on page 2. Its record begins at:</p>
+<div class="math">physical page 2 offset = 2 × 4096 = 8192
+record payload offset     = 32
+name field starts         = record + 9
+absolute name byte        = 8192 + 32 + 9 = 8233</div>
+<p>Change exactly one byte:</p>
+<pre><code>printf 'ÿ' | dd of=lesson.db bs=1 seek=8233 count=1 conv=notrunc</code></pre>
+<p>Now reopen:</p>
+<pre><code>./minidb lesson.db
+minidb&gt; GET 16
+get error: page 2: checksum mismatch: stored=........ computed=........</code></pre>
+<p>The exact hex values are not important. What matters is what <em>did not</em> happen: MiniSQLite did not decode the damaged record and return a subtly corrupted user. The page was rejected at the storage boundary.</p>
+<div class="box insight"><strong>Silent corruption became explicit corruption</strong>We still lost trustworthy access to that page. Checksums did not repair it. But an explicit integrity error is dramatically safer than quietly passing damaged bytes upward.</div>
+<h2 id="lab-wrong">16. Practical lab: a valid page in the wrong position</h2>
+<p>Restore the clean database first:</p>
+<pre><code>cp lesson-good.db misplaced.db</code></pre>
+<p>Now copy the entire valid page 1 over physical page 2:</p>
+<pre><code>dd if=lesson-good.db of=misplaced.db bs=4096 skip=1 seek=2 count=1 conv=notrunc</code></pre>
+<p>What is interesting here? The copied 4096 bytes still carry page 1's valid checksum. If our only rule were “CRC must match,” the bytes would look internally intact.</p>
+<p>But physical position 2 expects an embedded page number of 2:</p>
+<pre><code>./minidb misplaced.db
+minidb&gt; GET 16
+get error: page 2: stored page number is 1</code></pre>
+<p>This is why the page header stores identity in addition to integrity.</p>
+<h2 id="torn">17. Torn writes: why a 4096-byte WriteAt is not a magic atomic unit</h2>
+<p>Our code asks the operating system to write 4096 bytes. That does not mean power loss can only produce “all old” or “all new.” Storage layers may operate in smaller units; caches, controllers, filesystems, and hardware all participate. A crash can leave a page containing a mixture.</p>
+<div class="pageviz">
+<div class="payload"><strong>Intended new page</strong><br/>new header + new checksum + new payload</div>
+<div class="dangerline"></div>
+<div class="payload"><strong>Possible torn page after crash</strong><br/>new first portion + old remaining portion</div>
+</div>
+<p>If the persisted checksum came from the new page but part of the payload stayed old, recomputation should disagree. That is one important thing a page checksum can detect.</p>
+<p>But there are two subtleties:</p>
+<ul><li>A CRC has a finite number of values, so accidental collisions are possible, though uncommon enough for this teaching purpose.</li><li>If the storage system leaves the <em>entire old page</em> intact, its old checksum is still valid. A page-local checksum cannot prove freshness by itself.</li></ul>
+<h2 id="lab-torn">18. Practical lab: simulate a torn page</h2>
+<p>We can simulate a mixed old/new page without actually pulling the power cable.</p>
+<h3>Step A — create the “old” version</h3>
+<p>Create exactly 15 records, flush, exit, and copy the file:</p>
+<pre><code>cp lesson.db before-delete.db</code></pre>
+<p>ID 15 lives late in page 1: its record begins at offset 3616 inside the page, so its tombstone byte is beyond the halfway point.</p>
+<h3>Step B — create a “new” version</h3>
+<p>Open the database, delete ID 15, flush, exit:</p>
+<pre><code>./minidb lesson.db
+minidb&gt; DELETE 15
+record 15 deleted
+minidb&gt; FLUSH
+dirty pages sealed, checksummed, and flushed
+minidb&gt; EXIT
+cp lesson.db after-delete.db</code></pre>
+<p>The new page 1 contains both a new checksum near the start and a changed tombstone late in the page.</p>
+<h3>Step C — splice half new and half old</h3>
+<p>Start from the old file:</p>
+<pre><code>cp before-delete.db torn.db</code></pre>
+<p>Copy only the first 2048 bytes of page 1 from the new file into the old file:</p>
+<pre><code>dd if=after-delete.db of=torn.db bs=1 skip=4096 seek=4096 count=2048 conv=notrunc</code></pre>
+<p>Now page 1 has the <strong>new</strong> header/checksum in its first half but the <strong>old</strong> second half, where ID 15's tombstone still says “not deleted.”</p>
+<pre><code>./minidb torn.db
+minidb&gt; VERIFY
+verify error: page 1: checksum mismatch: stored=........ computed=........</code></pre>
+<p>You have created an artificial torn page and observed the detection mechanism directly.</p>
+<h2 id="limits">19. What checksums and metadata still cannot guarantee</h2>
+<p>This section matters as much as the implementation. It prevents us from overclaiming what Part 3 achieved.</p>
+<h3>Case 1 — data page new, metadata page old</h3>
+<p>INSERT changes at least two logical pieces of state: a data page receives the record, and metadata page 0 advances <code>nextID</code>. Suppose the data page reaches durable storage but page 0 does not. Both pages can have valid checksums, yet the database may ignore a record that physically exists.</p>
+<h3>Case 2 — metadata page new, data page old</h3>
+<p>The reverse is worse: <code>nextID</code> may claim a new record exists while its data page still contains the previous bytes. Again, every page can be individually checksum-valid. The inconsistency is between pages.</p>
+<h3>Case 3 — an entire older page survives</h3>
+<p>An old page has a valid old generation and matching checksum. Without another durable record saying “page 7 must be at generation 42,” page 7 alone cannot prove that generation 41 is stale.</p>
+<h3>Case 4 — malicious modification</h3>
+<p>CRC-32 is not a cryptographic MAC. Anyone able to edit the database can edit bytes and recompute the CRC. Our threat model is accidental corruption detection, not tamper-proof storage.</p>
+<div class="box purplebox"><strong>The next conceptual pressure</strong>Part 3 gives pages integrity, identity, and format metadata. The remaining crash problem is <em>multi-page consistency</em>: how do several related page changes become one recoverable operation? Typical answers involve a rollback journal, write-ahead log (WAL), copy-on-write scheme, or another recovery protocol. Checksums complement those systems; they do not replace them.</div>
+<h2 id="exercises">20. Exercises — make the invariants yours</h2>
+<div class="checkpoint"><h4>Exercise 1 — byte-layout prediction</h4><p>Without running code, write the exact absolute file offsets for: page 0 checksum, page 1 checksum, ID 1's ID field, ID 15's tombstone, and ID 16's name. Then verify using <code>xxd</code>.</p></div>
+<div class="checkpoint"><h4>Exercise 2 — checksum avalanche experiment</h4><p>Record <code>PAGEINFO 1</code>. Change one user on page 1, flush, and run <code>PAGEINFO 1</code> again. Which fields change? Explain why the checksum changes even if only one record byte changed.</p></div>
+<div class="checkpoint"><h4>Exercise 3 — corrupt the checksum field itself</h4><p>Copy a healthy database and modify one byte at absolute offset <code>page*4096 + 24</code>. Confirm the page is rejected. Why does our checksum calculation treat those four bytes as zero?</p></div>
+<div class="checkpoint"><h4>Exercise 4 — corrupt the page type</h4><p>Change page 1's type byte from 2 to 1 without fixing the checksum. Observe the checksum failure. Then, as a thought experiment, suppose someone recomputed the checksum too. Which additional expected-type check would still reject the page?</p></div>
+<div class="checkpoint"><h4>Exercise 5 — duplicate a page</h4><p>Repeat the “page 1 copied over page 2” experiment. Explain precisely why checksum validation alone is insufficient and why the embedded page number catches it.</p></div>
+<div class="checkpoint"><h4>Exercise 6 — truncate by one byte</h4><p>Copy the database, remove one byte from the end, and reopen. Which layer catches the problem first? Relate this to the invariant that file size must be a multiple of 4096.</p></div>
+<div class="checkpoint"><h4>Exercise 7 — stale page thought experiment</h4><p>Suppose page 3 generation 8 is fully written, but after a crash the file contains the older generation 7 page with its perfectly valid old checksum. Can Part 3 prove it is stale? Why not? What additional durable information would be required?</p></div>
+<div class="checkpoint"><h4>Exercise 8 — stronger checksum algorithm</h4><p>Research CRC-32C and cryptographic hashes. Do not blindly replace the code. Write down what problem each algorithm is designed to solve, the performance tradeoff, and whether it provides authenticity.</p></div>
+<div class="checkpoint"><h4>Exercise 9 — VERIFY versus normal reads</h4><p>Create three data pages, corrupt the last one, then reopen and GET a record only from page 1. Why can that GET succeed? Why does <code>VERIFY</code> still fail? What does this teach you about lazy page loading?</p></div>
+<h2 id="complete">21. Complete program — only after the pieces make sense</h2>
+<p>The final Part 3 project has four source files:</p>
+<div class="filetree">minisqlite-part3/
+├── go.mod
+├── format.go   ← physical page header + checksum + validation
+├── pager.go    ← cache + validated reads + sealed writes
+├── store.go    ← DB metadata + records + record→page mapping
+└── main.go     ← CLI + VERIFY + PAGEINFO</div>
+<div class="final"><h3>Before you copy</h3><p>You should be able to explain these transitions without looking at code: dirty page → seal → checksum → full-page write; file position → expected page number → embedded page-number check; persisted bytes → checksum verification → page type → payload interpretation; 32-byte header → 15 record slots. If those are fuzzy, return to the relevant section before using the complete files.</p></div>
+<h3><code>format.go</code></h3>
+<pre><code>package main
+
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+)
+
+const (
+	PageSize          = 4096
+	PageHeaderSize    = 32
+	PageMagic         = "PG03"
+	PageHeaderVersion = uint16(1)
+	ChecksumAlgorithm = uint32(1) // CRC-32/IEEE
+)
+
+type PageType uint8
+
+const (
+	PageTypeMetadata PageType = 1
+	PageTypeData     PageType = 2
+)
+
+func (t PageType) String() string {
+	switch t {
+	case PageTypeMetadata:
+		return "metadata"
+	case PageTypeData:
+		return "data"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(t))
+	}
+}
+
+type PageHeaderInfo struct {
+	Type       PageType
+	Number     uint64
+	Generation uint64
+	Checksum   uint32
+}
+
+func validPageType(t PageType) bool {
+	return t == PageTypeMetadata || t == PageTypeData
+}
+
+func initializePageData(data []byte, pageNum uint64, pageType PageType) error {
+	if len(data) != PageSize {
+		return fmt.Errorf("initialize page: expected %d bytes, got %d", PageSize, len(data))
+	}
+	if !validPageType(pageType) {
+		return fmt.Errorf("initialize page: invalid page type %d", pageType)
+	}
+
+	clear(data)
+	copy(data[0:4], []byte(PageMagic))
+	binary.LittleEndian.PutUint16(data[4:6], PageHeaderVersion)
+	data[6] = byte(pageType)
+	data[7] = 0 // flags; reserved for later
+	binary.LittleEndian.PutUint64(data[8:16], pageNum)
+	binary.LittleEndian.PutUint64(data[16:24], 0) // generation
+	binary.LittleEndian.PutUint32(data[24:28], 0) // checksum is filled at flush
+	binary.LittleEndian.PutUint32(data[28:32], 0) // reserved
+	return nil
+}
+
+func computePageChecksum(data []byte) (uint32, error) {
+	if len(data) != PageSize {
+		return 0, fmt.Errorf("checksum: expected %d bytes, got %d", PageSize, len(data))
+	}
+
+	h := crc32.NewIEEE()
+	_, _ = h.Write(data[:24])
+	_, _ = h.Write([]byte{0, 0, 0, 0})
+	_, _ = h.Write(data[28:])
+	return h.Sum32(), nil
+}
+
+func sealPageData(data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("seal page: expected %d bytes, got %d", PageSize, len(data))
+	}
+
+	generation := binary.LittleEndian.Uint64(data[16:24]) + 1
+	binary.LittleEndian.PutUint64(data[16:24], generation)
+	binary.LittleEndian.PutUint32(data[24:28], 0)
+
+	checksum, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	binary.LittleEndian.PutUint32(data[24:28], checksum)
+
+	return decodePageHeader(data), nil
+}
+
+func decodePageHeader(data []byte) PageHeaderInfo {
+	return PageHeaderInfo{
+		Type:       PageType(data[6]),
+		Number:     binary.LittleEndian.Uint64(data[8:16]),
+		Generation: binary.LittleEndian.Uint64(data[16:24]),
+		Checksum:   binary.LittleEndian.Uint32(data[24:28]),
+	}
+}
+
+func validatePageData(expectedPageNum uint64, data []byte) (PageHeaderInfo, error) {
+	if len(data) != PageSize {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: expected %d bytes, got %d", expectedPageNum, PageSize, len(data))
+	}
+	if string(data[0:4]) != PageMagic {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: bad page magic %q", expectedPageNum, string(data[0:4]))
+	}
+
+	headerVersion := binary.LittleEndian.Uint16(data[4:6])
+	if headerVersion != PageHeaderVersion {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: unsupported page-header version %d", expectedPageNum, headerVersion)
+	}
+
+	info := decodePageHeader(data)
+	if !validPageType(info.Type) {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: invalid page type %d", expectedPageNum, info.Type)
+	}
+	if info.Number != expectedPageNum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: stored page number is %d", expectedPageNum, info.Number)
+	}
+	if info.Checksum == 0 {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: missing checksum", expectedPageNum)
+	}
+
+	computed, err := computePageChecksum(data)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if computed != info.Checksum {
+		return PageHeaderInfo{}, fmt.Errorf("page %d: checksum mismatch: stored=%08x computed=%08x", expectedPageNum, info.Checksum, computed)
+	}
+
+	return info, nil
+}
+</code></pre>
+<h3><code>pager.go</code></h3>
+<pre><code>package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+)
+
+type Page struct {
+	Number uint64
+	Type   PageType
+	Data   []byte
+	dirty  bool
+}
+
+func (p *Page) MarkDirty() {
+	p.dirty = true
+}
+
+type PagerStats struct {
+	CachedPages        int
+	TotalPages         uint64
+	CacheHits          uint64
+	DiskReads          uint64
+	DiskWrites         uint64
+	ValidationFailures uint64
+}
+
+type Pager struct {
+	file               *os.File
+	pages              map[uint64]*Page
+	numPages           uint64
+	cacheHits          uint64
+	diskReads          uint64
+	diskWrites         uint64
+	validationFailures uint64
+}
+
+func OpenPager(path string) (*Pager, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if info.Size()%PageSize != 0 {
+		file.Close()
+		return nil, fmt.Errorf("database size %d is not a multiple of page size %d", info.Size(), PageSize)
+	}
+
+	return &amp;Pager{
+		file:     file,
+		pages:    make(map[uint64]*Page),
+		numPages: uint64(info.Size() / PageSize),
+	}, nil
+}
+
+func (p *Pager) GetPage(pageNum uint64, expectedType PageType) (*Page, error) {
+	if page, ok := p.pages[pageNum]; ok {
+		if page.Type != expectedType {
+			return nil, fmt.Errorf("page %d: expected type %s, got %s", pageNum, expectedType, page.Type)
+		}
+		p.cacheHits++
+		return page, nil
+	}
+
+	if pageNum &gt; p.numPages {
+		return nil, fmt.Errorf("cannot create page %d before page %d", pageNum, p.numPages)
+	}
+
+	page := &amp;Page{
+		Number: pageNum,
+		Type:   expectedType,
+		Data:   make([]byte, PageSize),
+	}
+
+	if pageNum == p.numPages {
+		if err := initializePageData(page.Data, pageNum, expectedType); err != nil {
+			return nil, err
+		}
+		page.MarkDirty()
+		p.numPages++
+		p.pages[pageNum] = page
+		return page, nil
+	}
+
+	n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil &amp;&amp; err != io.EOF {
+		return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+	}
+	p.diskReads++
+
+	info, err := validatePageData(pageNum, page.Data)
+	if err != nil {
+		p.validationFailures++
+		return nil, err
+	}
+	if info.Type != expectedType {
+		p.validationFailures++
+		return nil, fmt.Errorf("page %d: expected type %s, got %s", pageNum, expectedType, info.Type)
+	}
+
+	page.Type = info.Type
+	p.pages[pageNum] = page
+	return page, nil
+}
+
+func (p *Pager) FlushPage(pageNum uint64) error {
+	page, ok := p.pages[pageNum]
+	if !ok || !page.dirty {
+		return nil
+	}
+
+	if _, err := sealPageData(page.Data); err != nil {
+		return err
+	}
+
+	n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil {
+		return fmt.Errorf("write page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return fmt.Errorf("write page %d: expected %d bytes, wrote %d", pageNum, PageSize, n)
+	}
+
+	page.dirty = false
+	p.diskWrites++
+	return nil
+}
+
+func (p *Pager) FlushAll() error {
+	for pageNum := range p.pages {
+		if err := p.FlushPage(pageNum); err != nil {
+			return err
+		}
+	}
+	return p.file.Sync()
+}
+
+func (p *Pager) VerifyAll() (uint64, error) {
+	buf := make([]byte, PageSize)
+	for pageNum := uint64(0); pageNum &lt; p.numPages; pageNum++ {
+		n, err := p.file.ReadAt(buf, int64(pageNum)*PageSize)
+		if err != nil &amp;&amp; err != io.EOF {
+			return pageNum, fmt.Errorf("verify page %d: %w", pageNum, err)
+		}
+		if n != PageSize {
+			p.validationFailures++
+			return pageNum, fmt.Errorf("verify page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+		}
+		if _, err := validatePageData(pageNum, buf); err != nil {
+			p.validationFailures++
+			return pageNum, err
+		}
+	}
+	return p.numPages, nil
+}
+
+func (p *Pager) PageInfo(pageNum uint64, expectedType PageType) (PageHeaderInfo, error) {
+	page, err := p.GetPage(pageNum, expectedType)
+	if err != nil {
+		return PageHeaderInfo{}, err
+	}
+	if page.dirty {
+		if err := p.FlushPage(pageNum); err != nil {
+			return PageHeaderInfo{}, err
+		}
+	}
+	return validatePageData(pageNum, page.Data)
+}
+
+func (p *Pager) Stats() PagerStats {
+	return PagerStats{
+		CachedPages:        len(p.pages),
+		TotalPages:         p.numPages,
+		CacheHits:          p.cacheHits,
+		DiskReads:          p.diskReads,
+		DiskWrites:         p.diskWrites,
+		ValidationFailures: p.validationFailures,
+	}
+}
+
+func (p *Pager) Close() error {
+	flushErr := p.FlushAll()
+	closeErr := p.file.Close()
+	if flushErr != nil {
+		return flushErr
+	}
+	return closeErr
+}
+</code></pre>
+<h3><code>store.go</code></h3>
+<pre><code>package main
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+const (
+	DatabaseMagic   = "MINIDB03"
+	DatabaseVersion = uint32(3)
+
+	HeaderPage    = uint64(0)
+	FirstDataPage = uint64(1)
+
+	RecordSize   = 256
+	MaxNameLen   = 32
+	MaxEmailLen  = 64
+	SlotsPerPage = (PageSize - PageHeaderSize) / RecordSize
+
+	metaMagicOffset          = PageHeaderSize
+	metaVersionOffset        = metaMagicOffset + 8
+	metaPageSizeOffset       = metaVersionOffset + 4
+	metaRecordSizeOffset     = metaPageSizeOffset + 4
+	metaPageHeaderSizeOffset = metaRecordSizeOffset + 4
+	metaChecksumAlgOffset    = metaPageHeaderSizeOffset + 4
+	metaNextIDOffset         = 64
+)
+
+var (
+	ErrNotFound = errors.New("record not found")
+	ErrDeleted  = errors.New("record deleted")
+)
+
+type Store struct {
+	pager  *Pager
+	nextID int64
+}
+
+type User struct {
+	ID      int64
+	Deleted bool
+	Name    string
+	Email   string
+	Age     int32
+}
+
+func writeDatabaseMetadata(page *Page, nextID int64) {
+	clear(page.Data[PageHeaderSize:])
+	copy(page.Data[metaMagicOffset:metaMagicOffset+8], []byte(DatabaseMagic))
+	binary.LittleEndian.PutUint32(page.Data[metaVersionOffset:metaVersionOffset+4], DatabaseVersion)
+	binary.LittleEndian.PutUint32(page.Data[metaPageSizeOffset:metaPageSizeOffset+4], PageSize)
+	binary.LittleEndian.PutUint32(page.Data[metaRecordSizeOffset:metaRecordSizeOffset+4], RecordSize)
+	binary.LittleEndian.PutUint32(page.Data[metaPageHeaderSizeOffset:metaPageHeaderSizeOffset+4], PageHeaderSize)
+	binary.LittleEndian.PutUint32(page.Data[metaChecksumAlgOffset:metaChecksumAlgOffset+4], ChecksumAlgorithm)
+	binary.LittleEndian.PutUint64(page.Data[metaNextIDOffset:metaNextIDOffset+8], uint64(nextID))
+	page.MarkDirty()
+}
+
+func readDatabaseMetadata(page *Page) (int64, error) {
+	if page.Type != PageTypeMetadata {
+		return 0, fmt.Errorf("page 0 is %s, expected metadata", page.Type)
+	}
+	if string(page.Data[metaMagicOffset:metaMagicOffset+8]) != DatabaseMagic {
+		return 0, fmt.Errorf("not a Part 3 MiniDB file: bad database magic")
+	}
+
+	version := binary.LittleEndian.Uint32(page.Data[metaVersionOffset : metaVersionOffset+4])
+	if version != DatabaseVersion {
+		return 0, fmt.Errorf("unsupported database version %d", version)
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageSizeOffset : metaPageSizeOffset+4]); got != PageSize {
+		return 0, fmt.Errorf("file page size is %d, program expects %d", got, PageSize)
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaRecordSizeOffset : metaRecordSizeOffset+4]); got != RecordSize {
+		return 0, fmt.Errorf("file record size is %d, program expects %d", got, RecordSize)
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaPageHeaderSizeOffset : metaPageHeaderSizeOffset+4]); got != PageHeaderSize {
+		return 0, fmt.Errorf("file page-header size is %d, program expects %d", got, PageHeaderSize)
+	}
+	if got := binary.LittleEndian.Uint32(page.Data[metaChecksumAlgOffset : metaChecksumAlgOffset+4]); got != ChecksumAlgorithm {
+		return 0, fmt.Errorf("unsupported checksum algorithm %d", got)
+	}
+
+	nextID := int64(binary.LittleEndian.Uint64(page.Data[metaNextIDOffset : metaNextIDOffset+8]))
+	if nextID &lt; 1 {
+		return 0, fmt.Errorf("invalid next id %d", nextID)
+	}
+	return nextID, nil
+}
+
+func Open(path string) (*Store, error) {
+	pager, err := OpenPager(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if pager.numPages == 0 {
+		header, err := pager.GetPage(HeaderPage, PageTypeMetadata)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		writeDatabaseMetadata(header, 1)
+		if err := pager.FlushAll(); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		return &amp;Store{pager: pager, nextID: 1}, nil
+	}
+
+	header, err := pager.GetPage(HeaderPage, PageTypeMetadata)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+	nextID, err := readDatabaseMetadata(header)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+
+	return &amp;Store{pager: pager, nextID: nextID}, nil
+}
+
+func (s *Store) Close() error      { return s.pager.Close() }
+func (s *Store) Flush() error      { return s.pager.FlushAll() }
+func (s *Store) Stats() PagerStats { return s.pager.Stats() }
+
+func (s *Store) Verify() (uint64, error) {
+	if err := s.pager.FlushAll(); err != nil {
+		return 0, err
+	}
+	pages, err := s.pager.VerifyAll()
+	if err != nil {
+		return 0, err
+	}
+	header, err := s.pager.GetPage(HeaderPage, PageTypeMetadata)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := readDatabaseMetadata(header); err != nil {
+		return 0, err
+	}
+	return pages, nil
+}
+
+func (s *Store) PageInfo(pageNum uint64) (PageHeaderInfo, error) {
+	if pageNum &gt;= s.pager.numPages {
+		return PageHeaderInfo{}, fmt.Errorf("page %d does not exist", pageNum)
+	}
+	expected := PageTypeData
+	if pageNum == HeaderPage {
+		expected = PageTypeMetadata
+	}
+	return s.pager.PageInfo(pageNum, expected)
+}
+
+func recordLocation(id int64) (uint64, int, error) {
+	if id &lt; 1 {
+		return 0, 0, ErrNotFound
+	}
+	zeroBased := uint64(id - 1)
+	pageNum := FirstDataPage + zeroBased/uint64(SlotsPerPage)
+	slot := zeroBased % uint64(SlotsPerPage)
+	offset := PageHeaderSize + int(slot)*RecordSize
+	return pageNum, offset, nil
+}
+
+func encodeUser(u User) ([]byte, error) {
+	if len([]byte(u.Name)) &gt; MaxNameLen {
+		return nil, fmt.Errorf("name is longer than %d bytes", MaxNameLen)
+	}
+	if len([]byte(u.Email)) &gt; MaxEmailLen {
+		return nil, fmt.Errorf("email is longer than %d bytes", MaxEmailLen)
+	}
+
+	record := make([]byte, RecordSize)
+	binary.LittleEndian.PutUint64(record[0:8], uint64(u.ID))
+	if u.Deleted {
+		record[8] = 1
+	}
+	copy(record[9:41], []byte(u.Name))
+	copy(record[41:105], []byte(u.Email))
+	binary.LittleEndian.PutUint32(record[105:109], uint32(u.Age))
+	return record, nil
+}
+
+func decodeUser(record []byte) (User, error) {
+	if len(record) != RecordSize {
+		return User{}, fmt.Errorf("expected %d bytes, got %d", RecordSize, len(record))
+	}
+	return User{
+		ID:      int64(binary.LittleEndian.Uint64(record[0:8])),
+		Deleted: record[8] == 1,
+		Name:    strings.TrimRight(string(record[9:41]), "\x00"),
+		Email:   strings.TrimRight(string(record[41:105]), "\x00"),
+		Age:     int32(binary.LittleEndian.Uint32(record[105:109])),
+	}, nil
+}
+
+func (s *Store) persistNextID() error {
+	header, err := s.pager.GetPage(HeaderPage, PageTypeMetadata)
+	if err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint64(header.Data[metaNextIDOffset:metaNextIDOffset+8], uint64(s.nextID))
+	header.MarkDirty()
+	return nil
+}
+
+func (s *Store) Insert(name, email string, age int32) (int64, error) {
+	id := s.nextID
+	pageNum, offset, err := recordLocation(id)
+	if err != nil {
+		return 0, err
+	}
+	record, err := encodeUser(User{ID: id, Name: name, Email: email, Age: age})
+	if err != nil {
+		return 0, err
+	}
+	page, err := s.pager.GetPage(pageNum, PageTypeData)
+	if err != nil {
+		return 0, err
+	}
+	copy(page.Data[offset:offset+RecordSize], record)
+	page.MarkDirty()
+
+	s.nextID++
+	if err := s.persistNextID(); err != nil {
+		s.nextID--
+		return 0, err
+	}
+	return id, nil
+}
+
+func (s *Store) Get(id int64) (User, error) {
+	if id &lt; 1 || id &gt;= s.nextID {
+		return User{}, ErrNotFound
+	}
+	pageNum, offset, err := recordLocation(id)
+	if err != nil {
+		return User{}, err
+	}
+	page, err := s.pager.GetPage(pageNum, PageTypeData)
+	if err != nil {
+		return User{}, err
+	}
+	u, err := decodeUser(page.Data[offset : offset+RecordSize])
+	if err != nil {
+		return User{}, err
+	}
+	if u.Deleted {
+		return User{}, ErrDeleted
+	}
+	if u.ID != id {
+		return User{}, fmt.Errorf("record %d is corrupt: stored id is %d", id, u.ID)
+	}
+	return u, nil
+}
+
+func (s *Store) Scan() ([]User, error) {
+	users := make([]User, 0, s.nextID-1)
+	for id := int64(1); id &lt; s.nextID; id++ {
+		u, err := s.Get(id)
+		if errors.Is(err, ErrDeleted) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (s *Store) Delete(id int64) error {
+	if _, err := s.Get(id); err != nil {
+		return err
+	}
+	pageNum, offset, err := recordLocation(id)
+	if err != nil {
+		return err
+	}
+	page, err := s.pager.GetPage(pageNum, PageTypeData)
+	if err != nil {
+		return err
+	}
+	page.Data[offset+8] = 1
+	page.MarkDirty()
+	return nil
+}
+</code></pre>
+<h3><code>main.go</code></h3>
+<pre><code>package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+func printUser(u User) {
+	fmt.Printf("id=%d name=%s email=%s age=%d\n", u.ID, u.Name, u.Email, u.Age)
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("usage: minidb &lt;database-file&gt;")
+		os.Exit(1)
+	}
+
+	store, err := Open(os.Args[1])
+	if err != nil {
+		fmt.Println("open error:", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minidb&gt; ")
+		if !scanner.Scan() {
+			fmt.Println()
+			break
+		}
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch strings.ToUpper(parts[0]) {
+		case "INSERT":
+			if len(parts) != 4 {
+				fmt.Println("usage: INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+				continue
+			}
+			age64, err := strconv.ParseInt(parts[3], 10, 32)
+			if err != nil {
+				fmt.Println("age must be a 32-bit integer")
+				continue
+			}
+			id, err := store.Insert(parts[1], parts[2], int32(age64))
+			if err != nil {
+				fmt.Println("insert error:", err)
+				continue
+			}
+			fmt.Printf("inserted id=%d\n", id)
+
+		case "GET":
+			if len(parts) != 2 {
+				fmt.Println("usage: GET &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			u, err := store.Get(id)
+			if err != nil {
+				fmt.Println("get error:", err)
+				continue
+			}
+			printUser(u)
+
+		case "SCAN":
+			users, err := store.Scan()
+			if err != nil {
+				fmt.Println("scan error:", err)
+				continue
+			}
+			for _, u := range users {
+				printUser(u)
+			}
+
+		case "DELETE":
+			if len(parts) != 2 {
+				fmt.Println("usage: DELETE &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			if err := store.Delete(id); err != nil {
+				fmt.Println("delete error:", err)
+				continue
+			}
+			fmt.Printf("record %d deleted\n", id)
+
+		case "STATS":
+			st := store.Stats()
+			fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d validation_failures=%d\n",
+				st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites, st.ValidationFailures)
+
+		case "FLUSH":
+			if err := store.Flush(); err != nil {
+				fmt.Println("flush error:", err)
+				continue
+			}
+			fmt.Println("dirty pages sealed, checksummed, and flushed")
+
+		case "VERIFY":
+			pages, err := store.Verify()
+			if err != nil {
+				fmt.Println("verify error:", err)
+				continue
+			}
+			fmt.Printf("verified %d pages\n", pages)
+
+		case "PAGEINFO":
+			if len(parts) != 2 {
+				fmt.Println("usage: PAGEINFO &lt;page-number&gt;")
+				continue
+			}
+			pageNum, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("page number must be a non-negative integer")
+				continue
+			}
+			info, err := store.PageInfo(pageNum)
+			if err != nil {
+				fmt.Println("pageinfo error:", err)
+				continue
+			}
+			fmt.Printf("page=%d type=%s generation=%d checksum=%08x\n",
+				info.Number, info.Type, info.Generation, info.Checksum)
+
+		case "HELP":
+			fmt.Println("INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+			fmt.Println("GET &lt;id&gt;")
+			fmt.Println("SCAN")
+			fmt.Println("DELETE &lt;id&gt;")
+			fmt.Println("STATS")
+			fmt.Println("FLUSH")
+			fmt.Println("VERIFY")
+			fmt.Println("PAGEINFO &lt;page-number&gt;")
+			fmt.Println("EXIT")
+
+		case "EXIT", "QUIT":
+			return
+
+		default:
+			fmt.Println("unknown command; try HELP")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("input error:", err)
+	}
+}
+</code></pre>
+<h3>Build and smoke-test the finished project</h3>
+<pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre>
+<p>Try:</p>
+<pre><code>minidb&gt; INSERT alice alice@example.com 30
+inserted id=1
+minidb&gt; INSERT bob bob@example.com 25
+inserted id=2
+minidb&gt; FLUSH
+dirty pages sealed, checksummed, and flushed
+minidb&gt; PAGEINFO 0
+page=0 type=metadata generation=... checksum=........
+minidb&gt; PAGEINFO 1
+page=1 type=data generation=... checksum=........
+minidb&gt; VERIFY
+verified 2 pages
+minidb&gt; GET 1
+id=1 name=alice email=alice@example.com age=30
+minidb&gt; EXIT</code></pre>
+<p>Restart with the same file and verify the users persist. Then perform the one-byte corruption lab. A successful Part 3 implementation should reject the corrupted page rather than decoding it.</p>
+<h2 id="understand">22. What you should understand before leaving Part 3</h2>
+<p>Imagine the process starts and opens an existing three-page database. <code>OpenPager</code> first checks that the file length is divisible by 4096. The store asks for page 0 as metadata. The pager reads exactly 4096 bytes from offset 0. Before caching that page, it checks <code>PG03</code>, the physical header version, the page type, embedded page number 0, and the CRC-32. Only then does the store inspect the payload for <code>MINIDB03</code>, database version 3, page size, record size, page-header size, checksum algorithm, and <code>nextID</code>.</p>
+<p>Now suppose the user requests ID 16. With 15 slots per data page, the store maps ID 16 to page 2, slot 0, byte offset 32 within the page. The pager reads file offset <code>2 × 4096 = 8192</code>. It does not trust those bytes yet. It validates page 2's header and checksum and confirms its type is data. Only after that does <code>decodeUser</code> inspect bytes 32 through 287.</p>
+<p>If a single byte at absolute offset 8233 was modified after the last valid flush, the recomputed CRC differs from the stored CRC. The pager returns a checksum error. The record decoder never receives that damaged payload.</p>
+<p>If instead an intact copy of page 1 was written at page 2's physical position, the copied CRC can still be perfectly valid. But the embedded page number says 1 while the pager expected 2, so validation rejects it for the correct reason: the bytes may be internally intact, but they are in the wrong place.</p>
+<p>When a record changes in memory, we do not immediately recalculate CRC. We mark the page dirty. At flush, we increment the page generation, calculate the checksum over the exact page image that is about to be written, store the checksum, write all 4096 bytes, and eventually call <code>Sync</code>. On a later read, that persisted checksum becomes evidence we can verify.</p>
+<p>And finally, you should be able to state the limitation without hesitation: a checksum proves neither atomic transactions nor freshness across pages. If page 0 and page 2 are individually valid but represent different moments of an interrupted insert, Part 3 has no recovery protocol that can decide which database state to restore.</p>
+<div class="box insight"><strong>If that story feels natural, Part 3 worked.</strong>You no longer think of a database page as “4096 bytes we happened to read.” A persisted page now has identity, type, versioned structure, a write generation, and an integrity check—and the pager refuses to expose it until those invariants hold.</div>
+<h3>The pain that should now bother you</h3>
+<p>We can detect many damaged pages, but we cannot yet make related changes to several pages behave like one recoverable action. INSERT can dirty a data page and metadata page 0. A crash may persist one without the other. Both surviving pages may pass their checksums. That is the next reliability problem worth solving.</p>
+<div style="margin-top:52px;padding:28px;background:#f8fafc;border:1px solid var(--line);border-radius:14px;text-align:center"><strong style="font-size:1.15rem">Part 3 complete</strong><p style="margin-bottom:0;color:var(--muted)">You started with pages the program blindly trusted. You ended with self-describing pages, format metadata, checksums, corruption detection, full-file verification, and a precise understanding of why recovery still requires more than CRCs.</p></div>
+</article>
+<nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 3 of 10</span></div><div class="series-links"><a href="part-02.html">← Part 2</a><a href="index.html">Series home</a><a href="part-04.html">Part 4 →</a></div></nav></body>
+</html>

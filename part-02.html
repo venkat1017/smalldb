@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MiniSQLite Part 2 — Pages: The Unit of Disk I/O</title>
+<style>
+:root{--ink:#172033;--muted:#5b6577;--line:#dce2ea;--blue:#2463eb;--blue2:#eaf1ff;--green:#0d7a54;--green2:#e9f8f1;--amber:#8a5a00;--amber2:#fff6dc;--red:#a33131;--red2:#fff0f0;--code:#111827;--paper:#ffffff;--bg:#f5f7fb;--purple:#6d4aff;--purple2:#f1edff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.72}
+article{max-width:980px;margin:0 auto;background:var(--paper);padding:54px 64px 90px;box-shadow:0 10px 40px rgba(15,23,42,.06)}
+h1{font-size:2.65rem;line-height:1.08;margin:0 0 12px;letter-spacing:-.04em}h2{font-size:1.85rem;margin:64px 0 18px;letter-spacing:-.025em}h3{font-size:1.28rem;margin:36px 0 12px}h4{font-size:1.06rem;margin:24px 0 8px}
+p{margin:14px 0}.subtitle{font-size:1.17rem;color:var(--muted);max-width:800px;margin-bottom:28px}.kicker{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--blue);margin-bottom:10px}
+.toc{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:30px 0}.toc a{color:var(--blue);text-decoration:none}.toc ol{columns:2;gap:36px}.toc li{margin:5px 0}
+.box{border-left:5px solid;border-radius:8px;padding:17px 20px;margin:24px 0}.box strong:first-child{display:block;margin-bottom:6px}.question{background:var(--amber2);border-color:#d39a13}.insight{background:var(--green2);border-color:#25a674}.warning{background:var(--red2);border-color:#d45b5b}.teacher{background:var(--blue2);border-color:var(--blue)}.purplebox{background:var(--purple2);border-color:var(--purple)}
+pre{background:var(--code);color:#e5e7eb;padding:20px 22px;border-radius:12px;overflow:auto;font-size:.91rem;line-height:1.55;margin:18px 0 24px}code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}p code,li code,td code{background:#eef2f7;padding:2px 5px;border-radius:5px;color:#25324a;font-size:.92em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid var(--line);border-radius:12px;padding:18px}.card h4{margin-top:0}.mini{font-size:.94rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;margin:20px 0 28px;font-size:.95rem}th,td{border:1px solid var(--line);padding:10px 12px;vertical-align:top}th{background:#f1f5f9;text-align:left}
+.checkpoint{border:1px dashed #9aa7b8;border-radius:12px;padding:18px 20px;margin:24px 0;background:#fbfcfe}.checkpoint h4{margin-top:0}.step{display:inline-block;background:var(--blue);color:white;font-weight:800;border-radius:999px;padding:3px 10px;font-size:.78rem;margin-right:7px;vertical-align:2px}
+hr{border:0;border-top:1px solid var(--line);margin:48px 0}.final{border:2px solid #1f2937;border-radius:14px;padding:20px 22px;background:#fafafa}.final h3{margin-top:0}
+ul,ol{padding-left:26px}.math{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:12px 14px;border-radius:9px;margin:14px 0}.filetree{font-family:"SFMono-Regular",Consolas,monospace;background:#f7f9fc;border:1px solid var(--line);padding:14px 16px;border-radius:10px;margin:14px 0}.run{border-left:5px solid #6b7280;background:#f8fafc;padding:16px 18px;border-radius:8px;margin:20px 0}.run strong{display:block;margin-bottom:6px}
+.page-row{display:flex;gap:8px;align-items:stretch;margin:20px 0;overflow:auto}.page{min-width:150px;border:2px solid #65758b;border-radius:10px;background:#f8fafc;overflow:hidden}.page .ph{font-weight:800;background:#e2e8f0;padding:8px;text-align:center}.page .pb{padding:14px 10px;text-align:center;font-family:Consolas,monospace;font-size:.84rem}.page.header{border-color:#8a5a00}.page.header .ph{background:#fff0bd}.page.data{border-color:#2463eb}.page.data .ph{background:#dce8ff}.arrow{font-size:1.5rem;align-self:center;color:#64748b}.slotgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:10px 0}.slot{border:1px solid #9db2cf;background:#edf4ff;padding:8px 4px;border-radius:5px;text-align:center;font-family:Consolas,monospace;font-size:.78rem}.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:center;margin:22px 0}.flowbox{border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;background:#fbfcfe}.flowarrow{font-size:1.4rem;color:#64748b}.muted{color:var(--muted)}
+@media(max-width:760px){article{padding:34px 22px 70px}.toc ol{columns:1}.grid{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.flowarrow{transform:rotate(90deg)}h1{font-size:2.15rem}}
+</style>
+<link href="assets/site-nav.css" rel="stylesheet"/><link href="https://venkat1017.github.io/smalldb/part-02.html" rel="canonical"/><meta content="Replace scattered raw offsets with 4096-byte pages, a pager, caching, dirty pages, and flushing." name="description"/></head>
+<body><nav class="series-bar"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 2 of 10</span></div><div class="series-links"><a href="part-01.html">← Part 1</a><a href="index.html">Series home</a><a href="part-03.html">Part 3 →</a></div></nav>
+<article>
+<div class="kicker">MiniSQLite · Part 2 · First-principles database engineering</div>
+<h1>Pages: The Unit of Disk I/O</h1>
+<p class="subtitle">Part 1 proved that a database can be a file with rules. Now we deliberately make that design uncomfortable. Direct byte offsets are scattered through the storage code, every operation knows too much about the file, and there is nowhere to cache reusable data. We will solve that problem by putting one abstraction between the database and the file: the <strong>pager</strong>.</p>
+<div class="box teacher"><strong>How to use this chapter</strong>Do not jump to the complete source at the end. Keep your editor and terminal side by side. We will preserve the Part 1 project, create a Part 2 workspace, and then build the pager in small pieces. At each checkpoint, stop and predict what the program should do before you run it. The goal is not to memorize pager code. The goal is to understand why databases stop thinking in arbitrary byte ranges and start thinking in pages.</div>
+<div class="toc"><h3>Table of contents</h3><ol>
+<li><a href="#setup">Project setup: preserve Part 1</a></li>
+<li><a href="#pain">The pain we earned in Part 1</a></li>
+<li><a href="#page">What exactly is a page?</a></li>
+<li><a href="#layout">Design the Part 2 file format</a></li>
+<li><a href="#math">Derive record-to-page math</a></li>
+<li><a href="#page-type">Build the Page type</a></li>
+<li><a href="#open-pager">Open the pager</a></li>
+<li><a href="#get-page">GetPage: cache, read, or create</a></li>
+<li><a href="#dirty">Dirty pages and flushing</a></li>
+<li><a href="#header">Move metadata into page 0</a></li>
+<li><a href="#store">Make Store depend on Pager</a></li>
+<li><a href="#insert">INSERT through a page</a></li>
+<li><a href="#get">GET from a cached page</a></li>
+<li><a href="#scan">SCAN and watch the cache work</a></li>
+<li><a href="#delete">DELETE makes a page dirty</a></li>
+<li><a href="#cli">Expose STATS and FLUSH</a></li>
+<li><a href="#lab">Practical page-cache lab</a></li>
+<li><a href="#limits">What pages solve—and do not solve</a></li>
+<li><a href="#exercises">Exercises</a></li>
+<li><a href="#complete">Complete program</a></li>
+<li><a href="#understand">What you should understand</a></li>
+</ol></div>
+<h2 id="setup">1. Project setup: preserve Part 1 before changing the format</h2>
+<p>Part 2 changes the on-disk format. That is important. We are not merely reorganizing Go functions while keeping the exact same file. In Part 1, the file began with a 128-byte header and records followed immediately. In Part 2, the entire file will be divided into 4096-byte pages, including the header.</p>
+<p>That means a Part 1 <code>.db</code> file is not a Part 2 <code>.db</code> file. Do not overwrite the database you used while learning Part 1. Keep it as evidence of the old design.</p>
+<h3>Step 0A — make a safe Part 2 workspace</h3>
+<p>If your Part 1 source folder is named <code>minisqlite</code>, run this from its parent directory:</p>
+<pre><code>cp -R minisqlite minisqlite-part2
+cd minisqlite-part2
+rm -f minidb *.db</code></pre>
+<p>On PowerShell, the copy command is:</p>
+<pre><code>Copy-Item -Recurse minisqlite minisqlite-part2
+Set-Location minisqlite-part2
+Remove-Item minidb, *.db -ErrorAction SilentlyContinue</code></pre>
+<p>If your folder has another name, substitute that name. The important idea is simple: <strong>keep Part 1 untouched and experiment in a copy.</strong></p>
+<h3>Step 0B — keep Part 1 source as a readable reference</h3>
+<p>We are going to rebuild the storage layer around pages. To avoid compiling the old Part 1 implementation and the new Part 2 implementation together, rename the old source to a non-Go extension:</p>
+<pre><code>mv main.go part1-main.go.txt
+touch main.go pager.go store.go</code></pre>
+<p>PowerShell:</p>
+<pre><code>Rename-Item main.go part1-main.go.txt
+New-Item main.go, pager.go, store.go -ItemType File</code></pre>
+<p>Your project should now look roughly like this:</p>
+<div class="filetree">minisqlite-part2/
+├── go.mod
+├── main.go
+├── pager.go
+├── store.go
+└── part1-main.go.txt   ← reference only; Go will not compile it</div>
+<h3>Step 0C — prove the new workspace runs before doing database work</h3>
+<p>Put the smallest possible program in <code>main.go</code>:</p>
+<pre><code>package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("MiniSQLite Part 2: pager workshop")
+}</code></pre>
+<div class="run"><strong>Run it</strong><code>go run .</code><br/><br/>Expected output: <code>MiniSQLite Part 2: pager workshop</code></div>
+<p>This checkpoint looks trivial, but it removes setup uncertainty. From now on, if a later build fails, the failure came from a change we just made—not from a missing module, wrong directory, or stale executable.</p>
+<div class="box insight"><strong>First principle</strong>We are changing one variable at a time. Good systems learning is not “type 400 lines and debug whatever happens.” It is “establish a working state, make one conceptual change, observe the consequence.”</div>
+<h2 id="pain">2. The pain we earned in Part 1</h2>
+<p>Part 1 was intentionally primitive. A record ID became a byte offset using one formula, and methods called <code>ReadAt</code> or <code>WriteAt</code> directly. That was an excellent first design because you could see the bytes. But now imagine the database growing features.</p>
+<p>Suppose later we add a B-tree. A B-tree node must live somewhere in the file. Then we add free-space tracking. That metadata must live somewhere too. Then we want to cache frequently used pieces of the database in memory. Then we need to know which cached pieces changed and must eventually be written back. If every layer performs arbitrary file reads and writes, every layer becomes responsible for disk policy.</p>
+<div class="grid">
+<div class="card"><h4>Part 1 question</h4><p>“At what <strong>byte offset</strong> is record 37?”</p><p class="mini">The record layer knows the file layout and talks directly to <code>os.File</code>.</p></div>
+<div class="card"><h4>Part 2 question</h4><p>“Which <strong>page</strong> contains record 37, and where inside that page is its slot?”</p><p class="mini">The pager owns file I/O. Higher layers manipulate memory buffers.</p></div>
+</div>
+<p>The second question looks like extra work. At first, it is. We are introducing an abstraction that our tiny database does not strictly need. The payoff is that all future disk access gets one doorway.</p>
+<div class="flow"><div class="flowbox"><strong>Store</strong><br/><span class="muted">records, IDs, tombstones</span></div><div class="flowarrow">→</div><div class="flowbox"><strong>Pager</strong><br/><span class="muted">pages, cache, dirty state</span></div><div class="flowarrow">→</div><div class="flowbox"><strong>os.File</strong><br/><span class="muted">bytes on persistent storage</span></div></div>
+<div class="box question"><strong>Why not rely only on the operating system's file cache?</strong>The operating system already caches file data, but the database still needs its own logical unit of storage. Our pager must know which bytes form one database page, which pages have changed, which page number a B-tree node refers to, and eventually which pages may be evicted or pinned. The OS cache does not understand those database-level meanings.</div>
+<h2 id="page">3. What exactly is a page?</h2>
+<p>A <strong>page</strong> is a fixed-size chunk of the database file that our database chooses as its unit of I/O and organization. For this project, one page is <strong>4096 bytes</strong>.</p>
+<p>Do not turn “4096” into magic. Different storage engines make different choices, and hardware and operating systems have their own block and memory-page concepts. Our database page is simply a design decision: <em>MiniSQLite Part 2 will reason about the file in 4096-byte chunks.</em></p>
+<div class="math">PageSize = 4096 bytes
+
+page 0 begins at byte     0
+page 1 begins at byte  4096
+page 2 begins at byte  8192
+page 3 begins at byte 12288</div>
+<p>The byte offset of a page is therefore:</p>
+<div class="math">pageOffset = pageNumber × PageSize</div>
+<p>Compare this with Part 1. There, many database operations cared about exact record byte offsets. In Part 2, only the pager needs the page-to-file equation. The store will ask for page 7 and receive a 4096-byte buffer.</p>
+<div class="box teacher"><strong>Teacher check</strong>If I ask for page 6, what byte offset should the pager read from? Work it out before continuing: <code>6 × 4096 = 24576</code>. This is the only file-offset calculation we want the pager's clients to forget about.</div>
+<h2 id="layout">4. Design the Part 2 file format before writing Go</h2>
+<p>We still have 256-byte records from Part 1. Keeping that size for one more chapter is useful because it lets us isolate the new idea. We are changing <strong>how records are grouped and accessed</strong>, not redesigning variable-length records yet.</p>
+<p>Because <code>4096 / 256 = 16</code>, exactly sixteen records fit in one data page.</p>
+<div class="page-row">
+<div class="page header"><div class="ph">Page 0</div><div class="pb">database header<br/>4096 bytes</div></div><div class="arrow">→</div>
+<div class="page data"><div class="ph">Page 1</div><div class="pb">records 1–16<br/>16 slots</div></div><div class="arrow">→</div>
+<div class="page data"><div class="ph">Page 2</div><div class="pb">records 17–32<br/>16 slots</div></div><div class="arrow">→</div>
+<div class="page data"><div class="ph">Page 3</div><div class="pb">records 33–48<br/>16 slots</div></div>
+</div>
+<p>Page 0 is special. It is our <strong>header page</strong>. Pages 1 onward are data pages. This gives us a clean invariant: every valid file size is a multiple of 4096.</p>
+<table><thead><tr><th>Header bytes</th><th>Meaning</th><th>Why store it?</th></tr></thead><tbody>
+<tr><td><code>0..7</code></td><td><code>MINIDB02</code></td><td>Recognize our format and distinguish it from Part 1.</td></tr>
+<tr><td><code>8..11</code></td><td>version = 2</td><td>Reject incompatible future/older layouts explicitly.</td></tr>
+<tr><td><code>12..15</code></td><td>page size = 4096</td><td>The file records the assumption used to interpret offsets.</td></tr>
+<tr><td><code>16..19</code></td><td>record size = 256</td><td>Validate that this program agrees with the file.</td></tr>
+<tr><td><code>24..31</code></td><td>next ID</td><td>Once files grow by full pages, file size alone no longer tells us how many record slots are actually used.</td></tr>
+</tbody></table>
+<div class="box insight"><strong>A new problem created by pages</strong>In Part 1, file length could tell us the number of records because each insert extended the file by exactly 256 bytes. In Part 2, inserting record 1 creates an entire 4096-byte data page. IDs 2 through 16 fit inside that already allocated page, so the file does not grow. Therefore we must persist some metadata—here, <code>nextID</code>—to know how far the logical record sequence has progressed.</div>
+<h2 id="math">5. Derive record-to-page math on paper first</h2>
+<p>Before we write a function, derive the mapping. There are 16 record slots in each data page. IDs start at 1, but division is easiest when counting from zero, so first convert an ID to a zero-based record index:</p>
+<div class="math">zeroBased = id - 1
+pageNumber = 1 + zeroBased / 16
+slot       = zeroBased % 16
+offsetInPage = slot × 256</div>
+<p>The <code>1 +</code> exists because page 0 is reserved for the header.</p>
+<table><thead><tr><th>ID</th><th>zeroBased</th><th>page</th><th>slot</th><th>offset inside page</th></tr></thead><tbody>
+<tr><td>1</td><td>0</td><td>1</td><td>0</td><td>0</td></tr>
+<tr><td>2</td><td>1</td><td>1</td><td>1</td><td>256</td></tr>
+<tr><td>16</td><td>15</td><td>1</td><td>15</td><td>3840</td></tr>
+<tr><td>17</td><td>16</td><td>2</td><td>0</td><td>0</td></tr>
+<tr><td>32</td><td>31</td><td>2</td><td>15</td><td>3840</td></tr>
+<tr><td>33</td><td>32</td><td>3</td><td>0</td><td>0</td></tr>
+<tr><td>37</td><td>36</td><td>3</td><td>4</td><td>1024</td></tr>
+</tbody></table>
+<div class="box question"><strong>Predict before coding</strong>Where is ID 50? <code>zeroBased=49</code>. <code>49/16=3</code>, so it is on data page <code>1+3=4</code>. <code>49%16=1</code>, so it is slot 1, beginning 256 bytes into that page.</div>
+<h3><span class="step">TYPE 1</span>Put the page and record constants in their own layers</h3>
+<p>In <code>pager.go</code>, begin with the storage unit:</p>
+<pre><code>package main
+
+const PageSize = 4096</code></pre>
+<p>In <code>store.go</code>, add the record-layer constants:</p>
+<pre><code>package main
+
+const (
+    HeaderPage    = uint64(0)
+    FirstDataPage = uint64(1)
+    RecordSize    = 256
+    MaxNameLen    = 32
+    MaxEmailLen   = 64
+    SlotsPerPage  = PageSize / RecordSize
+)</code></pre>
+<p>Notice the ownership. <code>PageSize</code> belongs to the pager. <code>RecordSize</code> and <code>SlotsPerPage</code> belong to the store. The pager should not know that its bytes happen to contain users.</p>
+<h3><span class="step">TYPE 2</span>Encode the mapping once</h3>
+<p>Add this helper to <code>store.go</code>:</p>
+<pre><code>func recordLocation(id int64) (uint64, int, error) {
+    if id &lt; 1 {
+        return 0, 0, ErrNotFound
+    }
+
+    zeroBased := uint64(id - 1)
+    pageNum := FirstDataPage + zeroBased/uint64(SlotsPerPage)
+    slot := zeroBased % uint64(SlotsPerPage)
+    offset := int(slot) * RecordSize
+    return pageNum, offset, nil
+}</code></pre>
+<p>Do not scatter this arithmetic into <code>Insert</code>, <code>Get</code>, and <code>Delete</code>. A file format becomes maintainable when important layout rules have one source of truth.</p>
+<h2 id="page-type">6. Build the smallest useful Page type</h2>
+<p>A page in memory needs three facts:</p>
+<ul><li>which page number it represents,</li><li>its 4096 bytes,</li><li>whether those bytes differ from what is currently persisted.</li></ul>
+<p>Add to <code>pager.go</code>:</p>
+<pre><code>type Page struct {
+    Number uint64
+    Data   []byte
+    dirty  bool
+}
+
+func (p *Page) MarkDirty() {
+    p.dirty = true
+}</code></pre>
+<p>Why not immediately write every changed byte to disk? Because one reason to have a page cache is to let several logical changes happen in memory and write the page later. If record 1 and record 2 are on the same page, both changes can modify one cached 4096-byte buffer.</p>
+<div class="box warning"><strong>Dirty does not mean corrupt</strong>A dirty page is simply a cached page whose memory contents are newer than the persisted file contents. “Dirty” is standard storage terminology for “needs writing before we can safely discard this buffer.”</div>
+<h2 id="open-pager">7. Open the pager and validate page alignment</h2>
+<p>The pager owns the file handle. From this point onward, the store should eventually stop holding <code>*os.File</code> directly.</p>
+<h3><span class="step">TYPE 3</span>Define Pager state</h3>
+<pre><code>type Pager struct {
+    file     *os.File
+    pages    map[uint64]*Page
+    numPages uint64
+}</code></pre>
+<p>The map is our first page cache: page number → in-memory page. It is intentionally simple and has no size limit yet.</p>
+<h3><span class="step">TYPE 4</span>Open the file as a sequence of complete pages</h3>
+<p>Add <code>fmt</code> and <code>os</code> imports, then add:</p>
+<pre><code>func OpenPager(path string) (*Pager, error) {
+    file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+    if err != nil {
+        return nil, err
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        file.Close()
+        return nil, err
+    }
+
+    if info.Size()%PageSize != 0 {
+        file.Close()
+        return nil, fmt.Errorf("database size %d is not a multiple of page size %d",
+            info.Size(), PageSize)
+    }
+
+    return &amp;Pager{
+        file:     file,
+        pages:    make(map[uint64]*Page),
+        numPages: uint64(info.Size() / PageSize),
+    }, nil
+}</code></pre>
+<p>This is a stronger invariant than Part 1 had. If a supposedly valid Part 2 file is 5000 bytes long, we refuse to guess what it means. It should contain whole pages.</p>
+<div class="checkpoint"><h4>Checkpoint — does the project still compile?</h4><p>At this point some store helpers may not exist yet if you are typing exactly in chapter order. It is fine to leave <code>store.go</code> with only constants until we introduce its errors and types. The pager itself should be syntactically valid. Run <code>gofmt -w pager.go</code> frequently; it catches structure mistakes early.</p></div>
+<h2 id="get-page">8. GetPage has exactly three jobs</h2>
+<p><code>GetPage(pageNum)</code> is the heart of this chapter. When a caller asks for a page, only three situations exist.</p>
+<table><thead><tr><th>Situation</th><th>Meaning</th><th>Action</th></tr></thead><tbody>
+<tr><td>Page is already in <code>pages</code></td><td>Cache hit</td><td>Return the existing memory buffer. No file read.</td></tr>
+<tr><td><code>pageNum &lt; numPages</code></td><td>Existing page, not cached</td><td>Allocate 4096 bytes and read that page from disk.</td></tr>
+<tr><td><code>pageNum == numPages</code></td><td>Exactly the next page</td><td>Create a new zero-filled page and extend the logical page count.</td></tr>
+</tbody></table>
+<p>If <code>pageNum &gt; numPages</code>, we reject the request. Why? Otherwise a bug could ask for page 900 in a three-page file and silently create a giant hole. Our current allocator only grows the file one page at a time.</p>
+<h3><span class="step">TYPE 5</span>First, the cache-hit branch</h3>
+<pre><code>func (p *Pager) GetPage(pageNum uint64) (*Page, error) {
+    if page, ok := p.pages[pageNum]; ok {
+        return page, nil
+    }
+
+    // More cases come next.
+    return nil, nil
+}</code></pre>
+<p>That tiny branch is the reason future repeated reads can avoid repeated database-level file I/O.</p>
+<h3><span class="step">TYPE 6</span>Reject impossible gaps, then allocate the buffer</h3>
+<pre><code>if pageNum &gt; p.numPages {
+    return nil, fmt.Errorf("cannot create page %d before page %d", pageNum, p.numPages)
+}
+
+page := &amp;Page{
+    Number: pageNum,
+    Data:   make([]byte, PageSize),
+}</code></pre>
+<p><code>make([]byte, PageSize)</code> gives us 4096 zero bytes. For an existing page those zeros will immediately be replaced by bytes from the file. For a new page, zero is exactly the initial content we want.</p>
+<h3><span class="step">TYPE 7</span>Read an old page or create the next page</h3>
+<pre><code>if pageNum &lt; p.numPages {
+    n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+    if err != nil {
+        return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+    }
+    if n != PageSize {
+        return nil, fmt.Errorf("read page %d: expected %d bytes, got %d",
+            pageNum, PageSize, n)
+    }
+} else {
+    // pageNum == numPages: append one new logical page.
+    p.numPages++
+}
+
+p.pages[pageNum] = page
+return page, nil</code></pre>
+<p>Study the read offset: <code>int64(pageNum) * PageSize</code>. This is the only place in the normal read path where page number becomes a physical byte position.</p>
+<div class="box insight"><strong>The abstraction boundary has appeared</strong>A caller says <code>GetPage(2)</code>. The pager decides whether page 2 comes from RAM, from disk, or from a newly allocated zero buffer. The caller does not care which happened.</div>
+<h2 id="dirty">9. Dirty pages: changing RAM is not the same as persisting data</h2>
+<p>If a caller modifies <code>page.Data</code>, the file does not change automatically. The page is merely a slice in process memory. We therefore mark changed pages dirty and teach the pager how to flush them.</p>
+<h3><span class="step">TYPE 8</span>Flush one page</h3>
+<pre><code>func (p *Pager) FlushPage(pageNum uint64) error {
+    page, ok := p.pages[pageNum]
+    if !ok || !page.dirty {
+        return nil
+    }
+
+    n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+    if err != nil {
+        return fmt.Errorf("write page %d: %w", pageNum, err)
+    }
+    if n != PageSize {
+        return fmt.Errorf("write page %d: expected %d bytes, wrote %d",
+            pageNum, PageSize, n)
+    }
+
+    page.dirty = false
+    return nil
+}</code></pre>
+<p>Notice the symmetry:</p>
+<div class="math">read page N  → ReadAt(buffer, N × PageSize)
+write page N → WriteAt(buffer, N × PageSize)</div>
+<p>After a successful full write, the cached page and the file agree again, so <code>dirty=false</code>.</p>
+<h3><span class="step">TYPE 9</span>Flush all pages and close safely</h3>
+<pre><code>func (p *Pager) FlushAll() error {
+    for pageNum := range p.pages {
+        if err := p.FlushPage(pageNum); err != nil {
+            return err
+        }
+    }
+    return p.file.Sync()
+}
+
+func (p *Pager) Close() error {
+    flushErr := p.FlushAll()
+    closeErr := p.file.Close()
+    if flushErr != nil {
+        return flushErr
+    }
+    return closeErr
+}</code></pre>
+<p><code>Sync</code> asks the operating system to synchronize the file's current contents to stable storage. It is useful, but do not confuse this with transaction safety. We can still crash between writing two related pages. That problem will become one of our next motivations.</p>
+<h3>A tiny pager-only experiment</h3>
+<p>Before putting users back into the picture, temporarily replace <code>main.go</code> with this small experiment:</p>
+<pre><code>package main
+
+import "fmt"
+
+func main() {
+    pager, err := OpenPager("pager-demo.db")
+    if err != nil {
+        panic(err)
+    }
+    defer pager.Close()
+
+    page, err := pager.GetPage(0)
+    if err != nil {
+        panic(err)
+    }
+
+    copy(page.Data[0:11], []byte("hello page!"))
+    page.MarkDirty()
+    fmt.Println(string(page.Data[0:11]))
+}</code></pre>
+<div class="run"><strong>Run twice</strong><code>go run .</code><br/><code>go run .</code><br/><br/>Both runs should print <code>hello page!</code>. The first run creates page 0 in memory and flushes it during close. The second run reconstructs page 0 by reading 4096 bytes from the file.</div>
+<p>Delete <code>pager-demo.db</code> after this experiment. We are about to give page 0 a real database-header format.</p>
+<h2 id="header">10. Page 0 becomes database metadata</h2>
+<p>Now we reconnect to Part 1. We still need magic bytes, a version, and record-format assumptions. The difference is that the header is no longer 128 bytes followed immediately by data. The header owns a complete page.</p>
+<h3><span class="step">TYPE 10</span>Write the Part 2 header</h3>
+<p>In <code>store.go</code>, add <code>encoding/binary</code> and write:</p>
+<pre><code>func writeHeader(page *Page, nextID int64) {
+    clear(page.Data)
+    copy(page.Data[0:8], []byte("MINIDB02"))
+    binary.LittleEndian.PutUint32(page.Data[8:12], 2)
+    binary.LittleEndian.PutUint32(page.Data[12:16], PageSize)
+    binary.LittleEndian.PutUint32(page.Data[16:20], RecordSize)
+    binary.LittleEndian.PutUint64(page.Data[24:32], uint64(nextID))
+    page.MarkDirty()
+}</code></pre>
+<p><code>clear(page.Data)</code> makes the entire header deterministic before we place fields into it. The unused bytes remain reserved zeros.</p>
+<h3><span class="step">TYPE 11</span>Read and validate the header</h3>
+<pre><code>func readHeader(page *Page) (int64, error) {
+    if string(page.Data[0:8]) != "MINIDB02" {
+        return 0, fmt.Errorf("not a Part 2 MiniDB file: bad magic bytes")
+    }
+
+    version := binary.LittleEndian.Uint32(page.Data[8:12])
+    if version != 2 {
+        return 0, fmt.Errorf("unsupported database version %d", version)
+    }
+
+    pageSize := binary.LittleEndian.Uint32(page.Data[12:16])
+    if pageSize != PageSize {
+        return 0, fmt.Errorf("file page size is %d, program expects %d", pageSize, PageSize)
+    }
+
+    recordSize := binary.LittleEndian.Uint32(page.Data[16:20])
+    if recordSize != RecordSize {
+        return 0, fmt.Errorf("file record size is %d, program expects %d", recordSize, RecordSize)
+    }
+
+    nextID := int64(binary.LittleEndian.Uint64(page.Data[24:32]))
+    if nextID &lt; 1 {
+        return 0, fmt.Errorf("invalid next id %d", nextID)
+    }
+
+    return nextID, nil
+}</code></pre>
+<p>Why store page size inside a format whose parser already assumes 4096-byte pages? Because validation turns a hidden assumption into an explicit contract. If a future implementation uses a different size, it can fail loudly instead of misinterpreting every later offset.</p>
+<div class="box warning"><strong>Part 1 files should fail here</strong>That is intentional. A Part 1 file begins with <code>MINIDB01</code> and has a different layout. Compatibility should be implemented as an explicit migration tool, not by making the new reader guess.</div>
+<h2 id="store">11. Store stops owning the file</h2>
+<p>This is the architectural change we have been working toward. In Part 1:</p>
+<pre><code>type Store struct {
+    file *os.File
+}</code></pre>
+<p>In Part 2:</p>
+<pre><code>type Store struct {
+    pager  *Pager
+    nextID int64
+}</code></pre>
+<p>The store understands records. The pager understands pages and file I/O.</p>
+<h3><span class="step">TYPE 12</span>Open a new or existing database through the pager</h3>
+<pre><code>func Open(path string) (*Store, error) {
+    pager, err := OpenPager(path)
+    if err != nil {
+        return nil, err
+    }
+
+    if pager.numPages == 0 {
+        header, err := pager.GetPage(HeaderPage)
+        if err != nil {
+            pager.Close()
+            return nil, err
+        }
+        writeHeader(header, 1)
+        if err := pager.FlushPage(HeaderPage); err != nil {
+            pager.Close()
+            return nil, err
+        }
+        return &amp;Store{pager: pager, nextID: 1}, nil
+    }
+
+    header, err := pager.GetPage(HeaderPage)
+    if err != nil {
+        pager.Close()
+        return nil, err
+    }
+
+    nextID, err := readHeader(header)
+    if err != nil {
+        pager.Close()
+        return nil, err
+    }
+
+    return &amp;Store{pager: pager, nextID: nextID}, nil
+}</code></pre>
+<p>Read that in English. If there are zero pages, create page 0, write the first header, and persist it. Otherwise, load page 0 through the exact same pager path and validate it.</p>
+<h3><span class="step">TYPE 13</span>Close and flush through the pager</h3>
+<pre><code>func (s *Store) Close() error {
+    return s.pager.Close()
+}
+
+func (s *Store) Flush() error {
+    return s.pager.FlushAll()
+}</code></pre>
+<p>At this point, <code>Store</code> no longer needs direct calls to <code>ReadAt</code>, <code>WriteAt</code>, <code>Stat</code>, or <code>Sync</code>. Those concerns have moved down one layer.</p>
+<h2 id="insert">12. INSERT through a page</h2>
+<p>We can reuse the Part 1 record encoding almost unchanged. That is a sign that the abstraction boundary is doing useful work. The binary format <em>inside one record</em> is separate from the way pages are loaded.</p>
+<p>Keep the same 256-byte record fields:</p>
+<div class="math">0..7      ID (8 bytes)
+8         deleted flag (1 byte)
+9..40     name (32 bytes)
+41..104   email (64 bytes)
+105..108  age (4 bytes)
+109..255  reserved/padding</div>
+<p>Bring over your Part 1 <code>User</code>, <code>encodeUser</code>, and <code>decodeUser</code> functions. Do not change their job. They convert between a Go value and exactly 256 bytes.</p>
+<h3><span class="step">TYPE 14</span>Persist the logical next ID in page 0</h3>
+<pre><code>func (s *Store) persistNextID() error {
+    header, err := s.pager.GetPage(HeaderPage)
+    if err != nil {
+        return err
+    }
+    binary.LittleEndian.PutUint64(header.Data[24:32], uint64(s.nextID))
+    header.MarkDirty()
+    return nil
+}</code></pre>
+<p>This call often becomes a cache hit because page 0 was already loaded when the database opened. That is exactly the behavior we want: metadata can be accessed by page number without forcing another file read.</p>
+<h3><span class="step">TYPE 15</span>Insert into a slot inside a page</h3>
+<pre><code>func (s *Store) Insert(name, email string, age int32) (int64, error) {
+    id := s.nextID
+    pageNum, offset, err := recordLocation(id)
+    if err != nil {
+        return 0, err
+    }
+
+    record, err := encodeUser(User{ID: id, Name: name, Email: email, Age: age})
+    if err != nil {
+        return 0, err
+    }
+
+    page, err := s.pager.GetPage(pageNum)
+    if err != nil {
+        return 0, err
+    }
+
+    copy(page.Data[offset:offset+RecordSize], record)
+    page.MarkDirty()
+
+    s.nextID++
+    if err := s.persistNextID(); err != nil {
+        s.nextID--
+        return 0, err
+    }
+
+    return id, nil
+}</code></pre>
+<p>Walk through ID 17. <code>recordLocation(17)</code> returns page 2, offset 0. <code>GetPage(2)</code> sees that page 2 is exactly the next page after page 1, so it creates a new zero-filled 4096-byte buffer. We copy the 256-byte record into its first slot and mark page 2 dirty.</p>
+<div class="box insight"><strong>One insert no longer means one disk write</strong>Until we explicitly flush or close, an insert may change only cached memory: one data page and page 0's <code>nextID</code>. This is faster conceptually, but it creates a new responsibility: dirty pages must eventually be persisted correctly.</div>
+<h2 id="get">13. GET reads a record from a page buffer</h2>
+<p>Part 1's <code>Get</code> calculated a full file offset and read 256 bytes from the file. Part 2 calculates a page and an offset <em>inside that page</em>.</p>
+<h3><span class="step">TYPE 16</span>Get the page, then slice the record</h3>
+<pre><code>func (s *Store) Get(id int64) (User, error) {
+    if id &lt; 1 || id &gt;= s.nextID {
+        return User{}, ErrNotFound
+    }
+
+    pageNum, offset, err := recordLocation(id)
+    if err != nil {
+        return User{}, err
+    }
+
+    page, err := s.pager.GetPage(pageNum)
+    if err != nil {
+        return User{}, err
+    }
+
+    u, err := decodeUser(page.Data[offset : offset+RecordSize])
+    if err != nil {
+        return User{}, err
+    }
+    if u.Deleted {
+        return User{}, ErrDeleted
+    }
+    if u.ID != id {
+        return User{}, fmt.Errorf("record %d is corrupt: stored id is %d", id, u.ID)
+    }
+    return u, nil
+}</code></pre>
+<p>The important line is not the decoding. It is:</p>
+<pre><code>page, err := s.pager.GetPage(pageNum)</code></pre>
+<p>That line means <code>Get</code> has stopped caring whether the bytes are already in memory. If record 1 and record 2 live on page 1, asking for record 2 after record 1 reuses the same cached page.</p>
+<h2 id="scan">14. SCAN is still linear—but its I/O story changes</h2>
+<p>Pages do <strong>not</strong> magically make <code>SCAN</code> asymptotically faster. We still visit every logical ID. There is no index yet.</p>
+<pre><code>func (s *Store) Scan() ([]User, error) {
+    users := make([]User, 0, s.nextID-1)
+    for id := int64(1); id &lt; s.nextID; id++ {
+        u, err := s.Get(id)
+        if errors.Is(err, ErrDeleted) {
+            continue
+        }
+        if err != nil {
+            return nil, err
+        }
+        users = append(users, u)
+    }
+    return users, nil
+}</code></pre>
+<p>But consider scanning IDs 1 through 16. The first call to <code>Get(1)</code> may load page 1 from disk. <code>Get(2)</code> through <code>Get(16)</code> ask for the same page number. They become cache hits.</p>
+<p>That is a subtle but important distinction:</p>
+<div class="math">algorithmic work: still O(number of records)
+database page reads: approximately O(number of pages not already cached)</div>
+<p>An index will later reduce the number of records/pages we need to visit for selective lookups. The pager gives that future index a standard way to obtain nodes from disk.</p>
+<h3><span class="step">TYPE 17</span>Add simple pager counters so we can observe behavior</h3>
+<p>Do not trust intuition when we can instrument the code. Add counters to <code>Pager</code>:</p>
+<pre><code>cacheHits  uint64
+diskReads  uint64
+diskWrites uint64</code></pre>
+<p>Increment <code>cacheHits</code> in the cache-hit branch, <code>diskReads</code> after a successful page read, and <code>diskWrites</code> after a successful dirty-page flush. Then expose:</p>
+<pre><code>type PagerStats struct {
+    CachedPages int
+    TotalPages  uint64
+    CacheHits   uint64
+    DiskReads   uint64
+    DiskWrites  uint64
+}
+
+func (p *Pager) Stats() PagerStats {
+    return PagerStats{
+        CachedPages: len(p.pages),
+        TotalPages:  p.numPages,
+        CacheHits:   p.cacheHits,
+        DiskReads:   p.diskReads,
+        DiskWrites:  p.diskWrites,
+    }
+}</code></pre>
+<p>The counters are educational instrumentation, not production performance telemetry. They count calls made by our pager, while the operating system may perform its own caching underneath us.</p>
+<h2 id="delete">15. DELETE becomes “modify one cached page”</h2>
+<p>Our tombstone design still works. The deleted flag is byte 8 inside a record. The difference is that the record itself is now a slice within a page.</p>
+<h3><span class="step">TYPE 18</span>Find the page and flip one byte</h3>
+<pre><code>func (s *Store) Delete(id int64) error {
+    if _, err := s.Get(id); err != nil {
+        return err
+    }
+
+    pageNum, offset, err := recordLocation(id)
+    if err != nil {
+        return err
+    }
+    page, err := s.pager.GetPage(pageNum)
+    if err != nil {
+        return err
+    }
+
+    page.Data[offset+8] = 1
+    page.MarkDirty()
+    return nil
+}</code></pre>
+<p>The <code>+8</code> comes from the record layout, not the page layout. That distinction matters. Page math gets us to the record slot; record-format math gets us to the deleted byte inside the slot.</p>
+<div class="box teacher"><strong>Trace ID 17</strong>ID 17 maps to page 2, slot offset 0. Its tombstone is therefore page 2 byte 8. At the file level that byte is <code>2×4096 + 8 = 8200</code>. Notice that <code>Delete</code> itself never needs to compute 8200. The pager owns the page-to-file translation.</div>
+<h2 id="cli">16. Expose STATS and FLUSH so the pager is visible while learning</h2>
+<p>Keep the Part 1 commands—<code>INSERT</code>, <code>GET</code>, <code>SCAN</code>, and <code>DELETE</code>. Add two workshop commands.</p>
+<h3><span class="step">TYPE 19</span>STATS</h3>
+<pre><code>case "STATS":
+    st := store.Stats()
+    fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d\n",
+        st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites)</code></pre>
+<h3><span class="step">TYPE 20</span>FLUSH</h3>
+<pre><code>case "FLUSH":
+    if err := store.Flush(); err != nil {
+        fmt.Println("flush error:", err)
+        continue
+    }
+    fmt.Println("dirty pages flushed")</code></pre>
+<p><code>STATS</code> lets us distinguish logical requests from actual pager reads. <code>FLUSH</code> lets us make the dirty→clean transition visible before process exit.</p>
+<h2 id="lab">17. Practical lab: make page boundaries visible</h2>
+<p>This is the exercise that turns the abstraction into something concrete. Build the finished project once you reach the code at the end, then create a fresh database:</p>
+<pre><code>go build -o minidb .
+rm -f pages.db
+./minidb pages.db</code></pre>
+<p>Insert 20 records. You can type them manually if you want to feel the boundary at ID 17, or generate commands on a Unix-like shell:</p>
+<pre><code>{
+  for i in $(seq 1 20); do
+    echo "INSERT u$i u$i@example.com $((20+i))"
+  done
+  echo STATS
+  echo FLUSH
+  echo STATS
+  echo EXIT
+} | ./minidb pages.db</code></pre>
+<p>After flushing, the file should contain three pages:</p>
+<div class="page-row"><div class="page header"><div class="ph">Page 0</div><div class="pb">header<br/>nextID=21</div></div><div class="page data"><div class="ph">Page 1</div><div class="pb">IDs 1–16<br/>full</div></div><div class="page data"><div class="ph">Page 2</div><div class="pb">IDs 17–20<br/>12 empty slots</div></div></div>
+<div class="math">3 pages × 4096 bytes = 12288 bytes</div>
+<p>On macOS/Linux, verify the byte count with:</p>
+<pre><code>wc -c &lt; pages.db</code></pre>
+<p>Expected: <code>12288</code>.</p>
+<h3>Now prove the cache is doing something</h3>
+<p>Close the process, reopen the same database, and run:</p>
+<pre><code>STATS
+GET 1
+STATS
+GET 2
+STATS
+GET 17
+STATS</code></pre>
+<p>Reason about the expected shape before looking at exact numbers.</p>
+<ul>
+<li>Opening the database loads page 0, so the pager starts with one cached page and one disk read.</li>
+<li><code>GET 1</code> needs page 1, causing another disk read.</li>
+<li><code>GET 2</code> also lives on page 1, so it should increase cache hits without increasing disk reads.</li>
+<li><code>GET 17</code> lives on page 2, so disk reads increase again.</li>
+</ul>
+<p>With the implementation at the end of this chapter, a clean reopened 20-record database produces this progression:</p>
+<pre><code>pages=3 cached=1 cache_hits=0 disk_reads=1 disk_writes=0
+
+GET 1
+pages=3 cached=2 cache_hits=0 disk_reads=2 disk_writes=0
+
+GET 2
+pages=3 cached=2 cache_hits=1 disk_reads=2 disk_writes=0
+
+GET 17
+pages=3 cached=3 cache_hits=1 disk_reads=3 disk_writes=0</code></pre>
+<p>That is the page cache in one experiment. Two logical record reads—IDs 1 and 2—share one physical database-page read.</p>
+<h3>Inspect the page boundary directly</h3>
+<p>If your system has <code>xxd</code>, inspect the first bytes of page 0:</p>
+<pre><code>xxd -l 64 pages.db</code></pre>
+<p>You should see the ASCII bytes for <code>MINIDB02</code> near the beginning. Then inspect the beginning of page 1:</p>
+<pre><code>xxd -s 4096 -l 128 pages.db</code></pre>
+<p>And page 2:</p>
+<pre><code>xxd -s 8192 -l 128 pages.db</code></pre>
+<p>Page 1 begins with record 1. Page 2 begins with record 17. The equations from earlier are now visible in the file itself.</p>
+<h2 id="limits">18. What pages solve—and what they absolutely do not solve</h2>
+<p>It is easy to finish a chapter about a new abstraction and accidentally believe that abstraction solved more than it did. Let's be precise.</p>
+<table><thead><tr><th>Problem</th><th>Part 2 status</th><th>Why</th></tr></thead><tbody>
+<tr><td>Scattered raw file I/O</td><td><strong>Much better</strong></td><td>The pager owns page reads, writes, file offsets, flushing, and the file handle.</td></tr>
+<tr><td>Repeated reads of the same area</td><td><strong>Improved</strong></td><td>A loaded page is reused from the in-process cache.</td></tr>
+<tr><td>Knowing what changed</td><td><strong>Improved</strong></td><td>Dirty state is tracked per page.</td></tr>
+<tr><td>Unlimited memory use</td><td><strong>Not solved</strong></td><td>Our map never evicts pages. A real buffer pool needs a capacity and replacement policy.</td></tr>
+<tr><td>Slow selective lookup</td><td><strong>Not solved</strong></td><td>We still have no B-tree or other index.</td></tr>
+<tr><td>Wasted fixed-record space</td><td><strong>Not solved</strong></td><td>Records are still 256 bytes with fixed name/email regions.</td></tr>
+<tr><td>Reusing deleted slots</td><td><strong>Not solved</strong></td><td>Tombstones remain holes; there is no free list.</td></tr>
+<tr><td>Crash consistency</td><td><strong>Not solved</strong></td><td>Related dirty pages can be written at different moments.</td></tr>
+<tr><td>Concurrent readers/writers</td><td><strong>Not solved</strong></td><td>There is still no locking or MVCC.</td></tr>
+</tbody></table>
+<h3>The cache is intentionally unbounded</h3>
+<p>Our <code>pages</code> map keeps every loaded page forever. If the database contains one million 4096-byte pages and a long-running process touches all of them, this design is absurd: roughly four gigabytes of raw page buffers could accumulate, before accounting for Go object overhead.</p>
+<p>That is not a mistake we need to hide. It creates the next design question: <strong>if the cache can hold only N pages, which page should be evicted?</strong> And before evicting a dirty page, what must happen? The dirty flag we added today is exactly the state an eviction policy will later need.</p>
+<h3>A more dangerous problem: two dirty pages can disagree after a crash</h3>
+<p>An insert changes at least two logical things: the data page receives the new record, and header page 0 advances <code>nextID</code>. Those pages are separate 4096-byte writes.</p>
+<p>Imagine this order:</p>
+<ol><li>page 0 is written with <code>nextID=18</code>,</li><li>the process or machine crashes before page 2 containing record 17 is written.</li></ol>
+<p>After restart, the header says ID 17 should exist, but its data may not. Reverse the write order and you can get the opposite problem: the record reaches disk but the header still says the next ID is 17.</p>
+<div class="box warning"><strong><code>fsync</code> is not a transaction protocol</strong><code>Sync</code> can help ensure writes already issued become durable. It does not make a multi-page logical change atomic. To survive crashes correctly, a database needs a protocol such as journaling or a write-ahead log, with carefully defined ordering and recovery rules.</div>
+<h3>Why pages matter beyond caching</h3>
+<p>Pages are not merely a speed trick. They give later data structures stable addresses. A B-tree node can say “my left child is page 42” instead of storing a Go pointer that becomes meaningless after process exit. A free-list entry can refer to a page number. A recovery log can describe which page changed. A buffer manager can pin a page while an operation is using it.</p>
+<p>This is why Part 2 is architectural. The immediate program is still tiny, but the vocabulary of the storage engine has changed from arbitrary file offsets to page identities.</p>
+<h2 id="exercises">19. Exercises — test your model, not your typing speed</h2>
+<div class="checkpoint"><h4>Exercise 1 — page-boundary predictions</h4><p>Without running code, calculate the page number, slot number, and offset inside the page for IDs 1, 8, 16, 17, 31, 32, 33, 64, and 65. Then write a tiny temporary loop that calls <code>recordLocation</code> and verify every answer.</p></div>
+<div class="checkpoint"><h4>Exercise 2 — prove one page serves many GETs</h4><p>Create 16 records, restart, run <code>STATS</code>, then GET all 16 records in order. How many new disk reads happen? Explain why the number is not 16.</p></div>
+<div class="checkpoint"><h4>Exercise 3 — cross a boundary</h4><p>Insert record 17. Why does <code>TotalPages</code> increase at that moment while IDs 2–16 did not increase it? Verify the file becomes 12288 bytes after flushing.</p></div>
+<div class="checkpoint"><h4>Exercise 4 — dirty versus clean</h4><p>Insert one record, inspect <code>STATS</code>, run <code>FLUSH</code>, then inspect stats again. Modify another record by deleting it and flush again. Explain which pages you expect to be written each time.</p></div>
+<div class="checkpoint"><h4>Exercise 5 — corrupt the page-size field</h4><p>Make a copy of your database. Change the header's stored page-size bytes and try opening it. The important question is not “did it error?” but “why is rejecting the file safer than continuing?”</p></div>
+<div class="checkpoint"><h4>Exercise 6 — bounded-cache design on paper</h4><p>Do not code this yet. Suppose the pager may hold at most three pages. List the extra state you would need to evict pages safely. Think about recency, dirty state, and whether a page currently in use is allowed to disappear.</p></div>
+<div class="checkpoint"><h4>Exercise 7 — crash thought experiment</h4><p>For an insert that modifies data page 2 and header page 0, enumerate the possible durable states if a crash can happen between writes. Which states are internally inconsistent? This exercise is the bridge to crash recovery.</p></div>
+<h2 id="complete">20. Complete program — assemble it only after the pieces make sense</h2>
+<p>The finished Part 2 project has three source files. The separation is intentional:</p>
+<div class="filetree">minisqlite-part2/
+├── go.mod
+├── pager.go    ← page I/O, cache, dirty pages, flush
+├── store.go    ← users, record format, record→page mapping
+└── main.go     ← terminal interface only</div>
+<div class="final"><h3>Before you copy</h3><p>You should already be able to explain these five transitions: page number → file offset; ID → page/slot; cache miss → disk read; record modification → dirty page; dirty page → flush. If those are still fuzzy, reread the corresponding section before using the complete code.</p></div>
+<h3><code>pager.go</code></h3>
+<pre><code>package main
+
+import (
+	"fmt"
+	"os"
+)
+
+const PageSize = 4096
+
+type Page struct {
+	Number uint64
+	Data   []byte
+	dirty  bool
+}
+
+func (p *Page) MarkDirty() {
+	p.dirty = true
+}
+
+type PagerStats struct {
+	CachedPages int
+	TotalPages  uint64
+	CacheHits   uint64
+	DiskReads   uint64
+	DiskWrites  uint64
+}
+
+type Pager struct {
+	file       *os.File
+	pages      map[uint64]*Page
+	numPages   uint64
+	cacheHits  uint64
+	diskReads  uint64
+	diskWrites uint64
+}
+
+func OpenPager(path string) (*Pager, error) {
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+
+	if info.Size()%PageSize != 0 {
+		file.Close()
+		return nil, fmt.Errorf("database size %d is not a multiple of page size %d", info.Size(), PageSize)
+	}
+
+	return &amp;Pager{
+		file:     file,
+		pages:    make(map[uint64]*Page),
+		numPages: uint64(info.Size() / PageSize),
+	}, nil
+}
+
+func (p *Pager) GetPage(pageNum uint64) (*Page, error) {
+	if page, ok := p.pages[pageNum]; ok {
+		p.cacheHits++
+		return page, nil
+	}
+
+	if pageNum &gt; p.numPages {
+		return nil, fmt.Errorf("cannot create page %d before page %d", pageNum, p.numPages)
+	}
+
+	page := &amp;Page{
+		Number: pageNum,
+		Data:   make([]byte, PageSize),
+	}
+
+	if pageNum &lt; p.numPages {
+		n, err := p.file.ReadAt(page.Data, int64(pageNum)*PageSize)
+		if err != nil {
+			return nil, fmt.Errorf("read page %d: %w", pageNum, err)
+		}
+		if n != PageSize {
+			return nil, fmt.Errorf("read page %d: expected %d bytes, got %d", pageNum, PageSize, n)
+		}
+		p.diskReads++
+	} else {
+		// pageNum == numPages means append one new zero-filled logical page.
+		p.numPages++
+	}
+
+	p.pages[pageNum] = page
+	return page, nil
+}
+
+func (p *Pager) FlushPage(pageNum uint64) error {
+	page, ok := p.pages[pageNum]
+	if !ok || !page.dirty {
+		return nil
+	}
+
+	n, err := p.file.WriteAt(page.Data, int64(pageNum)*PageSize)
+	if err != nil {
+		return fmt.Errorf("write page %d: %w", pageNum, err)
+	}
+	if n != PageSize {
+		return fmt.Errorf("write page %d: expected %d bytes, wrote %d", pageNum, PageSize, n)
+	}
+
+	page.dirty = false
+	p.diskWrites++
+	return nil
+}
+
+func (p *Pager) FlushAll() error {
+	for pageNum := range p.pages {
+		if err := p.FlushPage(pageNum); err != nil {
+			return err
+		}
+	}
+	return p.file.Sync()
+}
+
+func (p *Pager) Stats() PagerStats {
+	return PagerStats{
+		CachedPages: len(p.pages),
+		TotalPages:  p.numPages,
+		CacheHits:   p.cacheHits,
+		DiskReads:   p.diskReads,
+		DiskWrites:  p.diskWrites,
+	}
+}
+
+func (p *Pager) Close() error {
+	flushErr := p.FlushAll()
+	closeErr := p.file.Close()
+	if flushErr != nil {
+		return flushErr
+	}
+	return closeErr
+}
+</code></pre>
+<h3><code>store.go</code></h3>
+<pre><code>package main
+
+import (
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+const (
+	HeaderPage    = uint64(0)
+	FirstDataPage = uint64(1)
+	RecordSize    = 256
+	MaxNameLen    = 32
+	MaxEmailLen   = 64
+	SlotsPerPage  = PageSize / RecordSize
+)
+
+var (
+	ErrNotFound = errors.New("record not found")
+	ErrDeleted  = errors.New("record deleted")
+)
+
+type Store struct {
+	pager  *Pager
+	nextID int64
+}
+
+type User struct {
+	ID      int64
+	Deleted bool
+	Name    string
+	Email   string
+	Age     int32
+}
+
+func writeHeader(page *Page, nextID int64) {
+	clear(page.Data)
+	copy(page.Data[0:8], []byte("MINIDB02"))
+	binary.LittleEndian.PutUint32(page.Data[8:12], 2)
+	binary.LittleEndian.PutUint32(page.Data[12:16], PageSize)
+	binary.LittleEndian.PutUint32(page.Data[16:20], RecordSize)
+	binary.LittleEndian.PutUint64(page.Data[24:32], uint64(nextID))
+	page.MarkDirty()
+}
+
+func readHeader(page *Page) (int64, error) {
+	if string(page.Data[0:8]) != "MINIDB02" {
+		return 0, fmt.Errorf("not a Part 2 MiniDB file: bad magic bytes")
+	}
+
+	version := binary.LittleEndian.Uint32(page.Data[8:12])
+	if version != 2 {
+		return 0, fmt.Errorf("unsupported database version %d", version)
+	}
+
+	pageSize := binary.LittleEndian.Uint32(page.Data[12:16])
+	if pageSize != PageSize {
+		return 0, fmt.Errorf("file page size is %d, program expects %d", pageSize, PageSize)
+	}
+
+	recordSize := binary.LittleEndian.Uint32(page.Data[16:20])
+	if recordSize != RecordSize {
+		return 0, fmt.Errorf("file record size is %d, program expects %d", recordSize, RecordSize)
+	}
+
+	nextID := int64(binary.LittleEndian.Uint64(page.Data[24:32]))
+	if nextID &lt; 1 {
+		return 0, fmt.Errorf("invalid next id %d", nextID)
+	}
+
+	return nextID, nil
+}
+
+func Open(path string) (*Store, error) {
+	pager, err := OpenPager(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if pager.numPages == 0 {
+		header, err := pager.GetPage(HeaderPage)
+		if err != nil {
+			pager.Close()
+			return nil, err
+		}
+		writeHeader(header, 1)
+		if err := pager.FlushPage(HeaderPage); err != nil {
+			pager.Close()
+			return nil, err
+		}
+		return &amp;Store{pager: pager, nextID: 1}, nil
+	}
+
+	header, err := pager.GetPage(HeaderPage)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+
+	nextID, err := readHeader(header)
+	if err != nil {
+		pager.Close()
+		return nil, err
+	}
+
+	return &amp;Store{pager: pager, nextID: nextID}, nil
+}
+
+func (s *Store) Close() error {
+	return s.pager.Close()
+}
+
+func (s *Store) Flush() error {
+	return s.pager.FlushAll()
+}
+
+func (s *Store) Stats() PagerStats {
+	return s.pager.Stats()
+}
+
+func recordLocation(id int64) (uint64, int, error) {
+	if id &lt; 1 {
+		return 0, 0, ErrNotFound
+	}
+
+	zeroBased := uint64(id - 1)
+	pageNum := FirstDataPage + zeroBased/uint64(SlotsPerPage)
+	slot := zeroBased % uint64(SlotsPerPage)
+	offset := int(slot) * RecordSize
+	return pageNum, offset, nil
+}
+
+func encodeUser(u User) ([]byte, error) {
+	if len([]byte(u.Name)) &gt; MaxNameLen {
+		return nil, fmt.Errorf("name is longer than %d bytes", MaxNameLen)
+	}
+	if len([]byte(u.Email)) &gt; MaxEmailLen {
+		return nil, fmt.Errorf("email is longer than %d bytes", MaxEmailLen)
+	}
+
+	record := make([]byte, RecordSize)
+	binary.LittleEndian.PutUint64(record[0:8], uint64(u.ID))
+	if u.Deleted {
+		record[8] = 1
+	}
+	copy(record[9:41], []byte(u.Name))
+	copy(record[41:105], []byte(u.Email))
+	binary.LittleEndian.PutUint32(record[105:109], uint32(u.Age))
+	return record, nil
+}
+
+func decodeUser(record []byte) (User, error) {
+	if len(record) != RecordSize {
+		return User{}, fmt.Errorf("expected %d bytes, got %d", RecordSize, len(record))
+	}
+
+	return User{
+		ID:      int64(binary.LittleEndian.Uint64(record[0:8])),
+		Deleted: record[8] == 1,
+		Name:    strings.TrimRight(string(record[9:41]), "\x00"),
+		Email:   strings.TrimRight(string(record[41:105]), "\x00"),
+		Age:     int32(binary.LittleEndian.Uint32(record[105:109])),
+	}, nil
+}
+
+func (s *Store) persistNextID() error {
+	header, err := s.pager.GetPage(HeaderPage)
+	if err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint64(header.Data[24:32], uint64(s.nextID))
+	header.MarkDirty()
+	return nil
+}
+
+func (s *Store) Insert(name, email string, age int32) (int64, error) {
+	id := s.nextID
+	pageNum, offset, err := recordLocation(id)
+	if err != nil {
+		return 0, err
+	}
+
+	record, err := encodeUser(User{ID: id, Name: name, Email: email, Age: age})
+	if err != nil {
+		return 0, err
+	}
+
+	page, err := s.pager.GetPage(pageNum)
+	if err != nil {
+		return 0, err
+	}
+
+	copy(page.Data[offset:offset+RecordSize], record)
+	page.MarkDirty()
+
+	s.nextID++
+	if err := s.persistNextID(); err != nil {
+		s.nextID--
+		return 0, err
+	}
+
+	return id, nil
+}
+
+func (s *Store) Get(id int64) (User, error) {
+	if id &lt; 1 || id &gt;= s.nextID {
+		return User{}, ErrNotFound
+	}
+
+	pageNum, offset, err := recordLocation(id)
+	if err != nil {
+		return User{}, err
+	}
+
+	page, err := s.pager.GetPage(pageNum)
+	if err != nil {
+		return User{}, err
+	}
+
+	u, err := decodeUser(page.Data[offset : offset+RecordSize])
+	if err != nil {
+		return User{}, err
+	}
+	if u.Deleted {
+		return User{}, ErrDeleted
+	}
+	if u.ID != id {
+		return User{}, fmt.Errorf("record %d is corrupt: stored id is %d", id, u.ID)
+	}
+	return u, nil
+}
+
+func (s *Store) Scan() ([]User, error) {
+	users := make([]User, 0, s.nextID-1)
+	for id := int64(1); id &lt; s.nextID; id++ {
+		u, err := s.Get(id)
+		if errors.Is(err, ErrDeleted) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (s *Store) Delete(id int64) error {
+	if _, err := s.Get(id); err != nil {
+		return err
+	}
+
+	pageNum, offset, err := recordLocation(id)
+	if err != nil {
+		return err
+	}
+	page, err := s.pager.GetPage(pageNum)
+	if err != nil {
+		return err
+	}
+
+	page.Data[offset+8] = 1
+	page.MarkDirty()
+	return nil
+}
+</code></pre>
+<h3><code>main.go</code></h3>
+<pre><code>package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+func printUser(u User) {
+	fmt.Printf("id=%d name=%s email=%s age=%d\n", u.ID, u.Name, u.Email, u.Age)
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("usage: minidb &lt;database-file&gt;")
+		os.Exit(1)
+	}
+
+	store, err := Open(os.Args[1])
+	if err != nil {
+		fmt.Println("open error:", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minidb&gt; ")
+		if !scanner.Scan() {
+			fmt.Println()
+			break
+		}
+
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch strings.ToUpper(parts[0]) {
+		case "INSERT":
+			if len(parts) != 4 {
+				fmt.Println("usage: INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+				continue
+			}
+			age64, err := strconv.ParseInt(parts[3], 10, 32)
+			if err != nil {
+				fmt.Println("age must be a 32-bit integer")
+				continue
+			}
+			id, err := store.Insert(parts[1], parts[2], int32(age64))
+			if err != nil {
+				fmt.Println("insert error:", err)
+				continue
+			}
+			fmt.Printf("inserted id=%d\n", id)
+
+		case "GET":
+			if len(parts) != 2 {
+				fmt.Println("usage: GET &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			u, err := store.Get(id)
+			if err != nil {
+				fmt.Println("get error:", err)
+				continue
+			}
+			printUser(u)
+
+		case "SCAN":
+			users, err := store.Scan()
+			if err != nil {
+				fmt.Println("scan error:", err)
+				continue
+			}
+			for _, u := range users {
+				printUser(u)
+			}
+
+		case "DELETE":
+			if len(parts) != 2 {
+				fmt.Println("usage: DELETE &lt;id&gt;")
+				continue
+			}
+			id, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				fmt.Println("id must be an integer")
+				continue
+			}
+			if err := store.Delete(id); err != nil {
+				fmt.Println("delete error:", err)
+				continue
+			}
+			fmt.Printf("record %d deleted\n", id)
+
+		case "STATS":
+			st := store.Stats()
+			fmt.Printf("pages=%d cached=%d cache_hits=%d disk_reads=%d disk_writes=%d\n",
+				st.TotalPages, st.CachedPages, st.CacheHits, st.DiskReads, st.DiskWrites)
+
+		case "FLUSH":
+			if err := store.Flush(); err != nil {
+				fmt.Println("flush error:", err)
+				continue
+			}
+			fmt.Println("dirty pages flushed")
+
+		case "HELP":
+			fmt.Println("INSERT &lt;name&gt; &lt;email&gt; &lt;age&gt;")
+			fmt.Println("GET &lt;id&gt;")
+			fmt.Println("SCAN")
+			fmt.Println("DELETE &lt;id&gt;")
+			fmt.Println("STATS")
+			fmt.Println("FLUSH")
+			fmt.Println("EXIT")
+
+		case "EXIT", "QUIT":
+			return
+
+		default:
+			fmt.Println("unknown command; try HELP")
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("input error:", err)
+	}
+}
+</code></pre>
+<h3>Build and smoke-test the finished project</h3>
+<pre><code>gofmt -w *.go
+go build -o minidb .
+rm -f lesson.db
+./minidb lesson.db</code></pre>
+<p>Try:</p>
+<pre><code>minidb&gt; INSERT alice alice@example.com 30
+inserted id=1
+minidb&gt; INSERT bob bob@example.com 25
+inserted id=2
+minidb&gt; STATS
+pages=2 cached=2 ...
+minidb&gt; GET 1
+id=1 name=alice email=alice@example.com age=30
+minidb&gt; FLUSH
+dirty pages flushed
+minidb&gt; DELETE 2
+record 2 deleted
+minidb&gt; SCAN
+id=1 name=alice email=alice@example.com age=30
+minidb&gt; EXIT</code></pre>
+<p>Restart the executable with the same <code>lesson.db</code> and verify that Alice remains and Bob remains deleted. Persistence from Part 1 still exists; the path to disk is simply better organized now.</p>
+<h2 id="understand">21. What you should understand before leaving Part 2</h2>
+<p>Do not measure success by whether you can reproduce <code>Pager.GetPage</code> from memory. Measure it by whether you can narrate one request.</p>
+<p>Suppose the process starts with a 20-record database and then executes <code>GET 17</code>. Opening the database asks the pager for page 0. Because page 0 is not cached and already exists in the file, the pager reads 4096 bytes starting at file offset 0. The store validates the header and learns <code>nextID=21</code>.</p>
+<p>For ID 17, the store computes <code>zeroBased=16</code>, therefore page 2, slot 0, offset 0 within the page. It asks the pager for page 2. If page 2 is not cached, the pager reads 4096 bytes from file offset <code>2×4096=8192</code> and caches that buffer. The store takes bytes <code>0..255</code> from the buffer and gives them to <code>decodeUser</code>. The decoder interprets the ID, tombstone, name, email, and age.</p>
+<p>If the next command is <code>GET 18</code>, the store computes page 2 again, now slot 1 at offset 256. The pager finds page 2 in its map and returns the existing buffer. No new pager-level disk read is necessary. The store decodes bytes <code>256..511</code>.</p>
+<p>If <code>DELETE 18</code> follows, the store changes the tombstone byte inside that same cached page and marks the page dirty. The file still contains the previous bytes until <code>FLUSH</code> or <code>Close</code> writes the full page back at offset 8192.</p>
+<div class="box insight"><strong>If that story feels natural, Part 2 worked.</strong>You now have a storage boundary: higher layers ask for pages; the pager decides how those pages reach memory and how modified pages return to disk.</div>
+<h3>The pain that should now bother you</h3>
+<p>We gained a page cache, but it has no capacity limit. We can accumulate dirty pages, but a crash can happen while related pages are only partially persisted. We can refer to data by stable page numbers, but we still linearly scan records because there is no index. Those are not random missing features. They are the pressures that will drive the next storage-engine mechanisms.</p>
+<p>Most importantly, pages should no longer sound like a database vocabulary word you memorized. You should be able to explain why they appeared: <strong>raw file access became too low-level and too scattered, so we introduced a fixed-size unit that one pager can load, cache, modify, and flush.</strong></p>
+<div style="margin-top:52px;padding:28px;background:#f8fafc;border:1px solid var(--line);border-radius:14px;text-align:center"><strong style="font-size:1.15rem">Part 2 complete</strong><p style="margin-bottom:0;color:var(--muted)">You started with raw byte offsets. You ended with page identities, a cache, dirty tracking, and one I/O boundary for the storage engine.</p></div>
+</article>
+<nav class="series-bar series-bottom"><div><span class="series-title">MiniSQLite from Scratch</span> · <span class="series-part">Part 2 of 10</span></div><div class="series-links"><a href="part-01.html">← Part 1</a><a href="index.html">Series home</a><a href="part-03.html">Part 3 →</a></div></nav></body>
+</html>
